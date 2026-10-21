@@ -336,6 +336,7 @@ struct ShaderReloadReport {
     int reloaded = 0;   // new version compiled and linked
     int kept = 0;       // source unreadable, or compile/link failed: the previous program stays in use
     int stale = 0;      // the program was destroyed since it was created (recipe dropped)
+    std::vector<std::string> errors;   // one line per kept program: which program and why
 };
 
 // Rebuilds every remembered program from disk (the editor's "Reload shaders" command). Progress and failures are
@@ -356,6 +357,7 @@ inline ShaderReloadReport ReloadAllShaderPrograms(std::ostream& log)
         rhi::ProgramDesc desc;
         if (!BuildShaderRecipeDesc(recipe, desc)) {
             ++report.kept;
+            report.errors.push_back(recipe.name + ": a source file is missing or empty");
             log << "[Shaders] kept " << recipe.name << ": a source file is missing or empty\n";
         }
         else if (rhi::Gpu().ReloadProgram(handle, desc)) {
@@ -364,6 +366,7 @@ inline ShaderReloadReport ReloadAllShaderPrograms(std::ostream& log)
         }
         else {
             ++report.kept;
+            report.errors.push_back(recipe.name + ": compile or link failed (the compiler log is in the console)");
             log << "[Shaders] kept previous " << recipe.name << " (compile or link failed, see the errors above)\n";
         }
         ++it;

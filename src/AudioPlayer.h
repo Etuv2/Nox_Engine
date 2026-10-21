@@ -3,6 +3,7 @@
 #include <SDL/SDL.h>
 #include <SDL/SDL_mixer.h>
 #include "assets/AssetIOSdl.h"
+#include "audio/AudioSpatial.h"
 #include <glm/glm.hpp>
 #include <iostream>
 #include <string>
@@ -124,18 +125,8 @@ public:
 
     // Stereo balance from the source direction relative to the listener facing (same formula as always).
     void setChannelPanning(int channel, const glm::vec3& diff, float listenerAngle) {
-        // Compute the angle (in degrees) from listener to source.
-        float angle = std::atan2f(diff.y, diff.x) * 180.0f / static_cast<float>(M_PI);
-        float relativeAngle = angle - listenerAngle;
-        while (relativeAngle < 0) {
-            relativeAngle += 360.0f;
-        }
-        while (relativeAngle >= 360.0f) {
-            relativeAngle -= 360.0f;
-        }
-
-        // Calculate panning based on the sine of the relative angle.
-        float panFactor = static_cast<float>((std::sin(relativeAngle * M_PI / 180.0f) + 1.0f) / 2.0f);
+        // Balance from the listener's right vector (audio/AudioSpatial.h), not from the height of the source.
+        const float panFactor = AudioPanFromDirection(diff, listenerAngle);
         Uint8 right = static_cast<Uint8>(255 * panFactor);
         Uint8 left = static_cast<Uint8>(255 * (1.0f - panFactor));
         Mix_SetPanning(channel, left, right);

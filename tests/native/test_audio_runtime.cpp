@@ -179,10 +179,32 @@ NOX_TEST(AudioRuntime, AttenuationRejectsNonFiniteAndParsesNames) {
 }
 
 NOX_TEST(AudioRuntime, PanFollowsSourceDirection) {
-    // Same convention as AudioPlayer: a source straight ahead (+x) is centred, +y (the angle axis) is full right.
-    NOX_CHECK(Near(AudioPanFromDirection(glm::vec3(5.0f, 0.0f, 0.0f), 0.0f), 0.5f));
-    NOX_CHECK(Near(AudioPanFromDirection(glm::vec3(0.0f, 5.0f, 0.0f), 0.0f), 1.0f));
-    NOX_CHECK(Near(AudioPanFromDirection(glm::vec3(0.0f, -5.0f, 0.0f), 0.0f), 0.0f));
+    // A listener facing +x (yaw 0) has its right side on +z (right = cross(forward, up)).
+    NOX_CHECK(Near(AudioPanFromDirection(glm::vec3(5.0f, 0.0f, 0.0f), 0.0f), 0.5f));    // dead ahead
+    NOX_CHECK(Near(AudioPanFromDirection(glm::vec3(0.0f, 0.0f, 5.0f), 0.0f), 1.0f));    // to the right
+    NOX_CHECK(Near(AudioPanFromDirection(glm::vec3(0.0f, 0.0f, -5.0f), 0.0f), 0.0f));   // to the left
+    NOX_CHECK(Near(AudioPanFromDirection(glm::vec3(5.0f, 0.0f, 5.0f), 0.0f), 0.5f + 0.5f * std::sqrt(0.5f)));
+}
+
+NOX_TEST(AudioRuntime, PanIgnoresHeightOfSource) {
+    // A source straight above the listener is not panned: the balance comes from the horizontal direction only.
+    NOX_CHECK(Near(AudioPanFromDirection(glm::vec3(0.0f, 5.0f, 0.0f), 0.0f), 0.5f));
+    NOX_CHECK(Near(AudioPanFromDirection(glm::vec3(0.0f, 9.0f, 0.0f), 90.0f), 0.5f));
+    // A source to the listener's right and above it still pans right.
+    // Horizontal part (4, 3) has length 5; its projection on the right side (+z) is 3/5.
+    NOX_CHECK(Near(AudioPanFromDirection(glm::vec3(4.0f, 4.0f, 3.0f), 0.0f), 0.5f + 0.5f * (3.0f / 5.0f)));
+}
+
+NOX_TEST(AudioRuntime, PanStaysRightAfterListenerTurnsAround) {
+    // Source 5 m to the listener's right (+z when facing +x).
+    const glm::vec3 right(0.0f, 0.0f, 5.0f);
+    NOX_CHECK(Near(AudioPanFromDirection(right, 0.0f), 1.0f));
+    // The listener turns 180 degrees (now faces -x): its right side is -z, so the same source is now on its left.
+    NOX_CHECK(Near(AudioPanFromDirection(right, 180.0f), 0.0f));
+    // The source is also 5 m to the right of the turned listener when it sits on the new right side (-z).
+    NOX_CHECK(Near(AudioPanFromDirection(glm::vec3(0.0f, 0.0f, -5.0f), 180.0f), 1.0f));
+    // A quarter turn: facing +z, right is -x.
+    NOX_CHECK(Near(AudioPanFromDirection(glm::vec3(-5.0f, 0.0f, 0.0f), 90.0f), 1.0f));
 }
 
 // ---- Occlusion --------------------------------------------------------------------------------------------------

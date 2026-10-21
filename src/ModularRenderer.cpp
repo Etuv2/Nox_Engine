@@ -74,6 +74,12 @@ const SurfelGIFrameStats* ModularRenderer::GetSurfelGIStats() const
 	return m_surfelGIManager ? &m_surfelGIManager->GetStats() : nullptr;
 }
 
+bool ModularRenderer::ReloadSurfelGIShaders()
+{
+	if (!m_surfelGIManager || !m_surfelGIManager->IsEnabled()) return true;   // nothing is compiled: nothing to reload
+	return m_surfelGIManager->ReloadShaders();
+}
+
 namespace {
 	using Clock = std::chrono::high_resolution_clock;
 	static constexpr std::size_t kProfilerFramesInFlight = 4;

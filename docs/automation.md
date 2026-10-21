@@ -260,6 +260,23 @@ Per-pass timings of the last rendered frame (the same data as `NOX_LOG_PASS_METR
 
 GPU times are measured with timer queries and are noisy when other work shares the GPU.
 
+### render.reload_shaders
+
+Recompiles, from disk, every shader program made from a file (the shader helpers and `ComputeShader::CreateFromFile`),
+and the surfel GI shaders. It is the same work as the editor's Ctrl+Shift+R. Each program is swapped in under its
+handle; a program that fails to compile or link keeps its previous version, so the next frame still renders.
+
+```
+-> {"jsonrpc":"2.0","id":21,"method":"render.reload_shaders","params":{}}
+<- {"jsonrpc":"2.0","id":21,"result":{"reloaded":84,"kept":1,"stale":0,"errors":[
+    "shaders/fullscreen_vert.glsl + shaders/bloom_frag.glsl: compile or link failed (the compiler log is in the console)"]}}
+```
+
+`reloaded` counts the programs that now run the new source. `kept` counts the programs that kept the previous version
+(an unreadable or missing source, or a compile or link failure), plus one when a surfel GI program failed. `stale` counts
+recipes whose program was destroyed since it was created. `errors` has one line per kept program; the compiler and linker
+messages are in the console log (`log.tail`). A surfel GI pipeline that is off reports nothing to reload.
+
 ### log.tail
 
 The last `lines` engine log lines (stdout and stderr, default 200), with level `info`, `warning` or `error`.
@@ -338,6 +355,17 @@ event), on a virtual slot that works with or without a real controller.
 gamepad slot (0..3) and takes `button` (an SDL controller button name) or `axis` (an SDL controller axis name, with
 `value` in -1..1, default 1); `up` releases it (an axis returns to 0). Hold an input by sending `down`, then `up` later.
 Give exactly one of `key`, `mouse` or `pad`. Actions (`action`) are not supported and return -32602.
+
+`target` chooses where a key goes. `"action"` (the default) is the path above. `"editor"` queues the key straight into
+ImGui's input (`io.AddKeyEvent`), so editor shortcuts see it, Ctrl+Shift+R included; it takes `key` only, and the
+modifiers are keys too (`"Left Ctrl"`, `"Left Shift"`, `"Left Alt"`). Send the modifier `down` first, then the key
+`down` and `up`, then release the modifiers. The key is not sent as an SDL event with the editor target: its modifier
+field would clear the Ctrl and Shift state ImGui is holding.
+
+```
+-> {"jsonrpc":"2.0","id":22,"method":"input.inject","params":{"key":"Left Ctrl","state":"down","target":"editor"}}
+-> {"jsonrpc":"2.0","id":23,"method":"input.inject","params":{"key":"R","state":"down","target":"editor"}}
+```
 
 ### editor.select
 

@@ -38,8 +38,9 @@ const char* AudioAttenuationName(AudioAttenuation curve);
 // Linear gain in [0, 1] for a listener-to-source distance. Non-finite distances are silent.
 float AudioAttenuationGain(float distance, const AudioSpatialParams& params);
 
-// Stereo balance for a source at `diff` (source minus listener) when the listener faces `listenerAngleDeg`: 0 = full
-// left, 1 = full right. Same convention as AudioPlayer::setChannel3DPosition (angle from diff.x and diff.y).
+// Stereo balance for a source at `diff` (source minus listener) when the listener faces `listenerAngleDeg` (yaw,
+// atan2(z, x) in degrees): 0 = full left, 1 = full right. The balance is the horizontal direction to the source
+// projected on the listener's right vector; height does not pan.
 float AudioPanFromDirection(const glm::vec3& diff, float listenerAngleDeg);
 
 // Ray test: true when the segment from->to is blocked by level geometry.

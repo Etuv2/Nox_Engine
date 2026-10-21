@@ -163,10 +163,26 @@ occluded.
 **Not implemented:** reverb zones (SDL_mixer has no effect bus to send to), a low-pass filter for occlusion (the
 channel effect slot is used by pitch shifting), and a Doppler effect from source velocity.
 
-**Known limit:** the stereo balance is computed from the source offset in x and y (the original formula, kept so
-racing audio is unchanged). In a y-up world the horizontal offset is x and z, so a source the same distance left or
-right of the listener can pan wrongly when it sits above or below the listener's level. Fixing it changes the mix of
-every 3D source, so it is a separate decision.
+**Stereo balance:** a source's balance is its horizontal direction (x and z) projected on the listener's right vector,
+so a source straight above or below the listener is centred, and a source to the listener's right pans right whichever
+way the listener faces (checked in `PanStaysRightAfterListenerTurnsAround`). Earlier builds used the source's y offset
+here, which panned by height in a y-up world; that is fixed.
+
+## AudioSource from Lua
+
+`ctx:component(h, "AudioSource")` returns the component proxy, and the proxy is the handle of a scene audio source. Its
+methods are `play()` (returns true, or false when the node has no sound), `pause()` and `stop()`, and its `playing`
+property tells whether it plays. Keep `h` (the entity handle) or the proxy; the source is removed with its node.
+
+```lua
+local source = ctx:component(speaker, "AudioSource")
+source:play()
+if source.playing then ... end
+source:stop()
+```
+
+Reflection methods return plain values, so `play` does not return a separate playback handle. A one-shot from
+`audio.play_one_shot` has its own handle (above); a scene source is driven through its component.
 
 ## Notes
 

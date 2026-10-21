@@ -91,6 +91,9 @@ public:
 	RenderContext& GetContext() { return m_context; }
 	const RenderContext& GetContext() const { return m_context; }
 	const SurfelGIFrameStats* GetSurfelGIStats() const;
+	// Recompiles the surfel GI shaders from disk (editor and automation "Reload shaders"). True when surfel GI is off
+	// or the reload succeeded; false when a surfel program failed, which keeps the previous one in use.
+	bool ReloadSurfelGIShaders();
 	bool ExportIndirectDiffuseValidationStages(const std::string& directory) const;
 	bool ReadIndirectDiffuseProbe(int stage, int pixelX, int pixelY, IndirectDiffuseProbeSample& outSample) const;
 
