@@ -78,6 +78,12 @@ bool SetPropertyContinuous(PropertyEdit& edit, NodeTable& table, const std::shar
 // Returns true when a step was pushed.
 bool EndPropertyEdit(PropertyEdit& edit, NodeTable& table, const UndoPush& push);
 
+// Multi-edit: the value a target node gets from an edit the primary node made (before -> after). Vector components
+// the edit changed take the new component value and the others keep the target's own; a scalar that changed takes
+// the new value. A target of another type gets the new value.
+nox::reflect::PropValue MergeEditedValue(const nox::reflect::PropValue& target, const nox::reflect::PropValue& before,
+	const nox::reflect::PropValue& after);
+
 // ---- Components ------------------------------------------------------------------------------------
 
 // Adds a component (desc.add) and pushes a step whose undo removes it again.

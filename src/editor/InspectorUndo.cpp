@@ -1,6 +1,7 @@
 #include "InspectorUndo.h"
 
 #include <algorithm>
+#include <variant>
 #include "../SceneNode.h"
 #include "reflect/ReflectServices.h"
 
@@ -363,6 +364,37 @@ bool UnpackPrefabUndoable(NodeTable& table, const UndoPush& push, const std::sha
 			[t, handle] { if (auto n = t->Resolve(handle)) n->SetPrefabPath(std::string()); });
 	}
 	return true;
+}
+
+// ---- Multi-edit ------------------------------------------------------------------------------------
+
+namespace {
+
+template <typename V, int N>
+V MergeComponents(const V& target, const V& before, const V& after)
+{
+	V out = target;
+	for (int i = 0; i < N; ++i) {
+		if (before[i] != after[i]) out[i] = after[i];
+	}
+	return out;
+}
+
+} // namespace
+
+PropValue MergeEditedValue(const PropValue& target, const PropValue& before, const PropValue& after)
+{
+	if (target.index() != after.index() || before.index() != after.index()) return after;
+	if (std::holds_alternative<glm::vec2>(after)) {
+		return MergeComponents<glm::vec2, 2>(std::get<glm::vec2>(target), std::get<glm::vec2>(before), std::get<glm::vec2>(after));
+	}
+	if (std::holds_alternative<glm::vec3>(after)) {
+		return MergeComponents<glm::vec3, 3>(std::get<glm::vec3>(target), std::get<glm::vec3>(before), std::get<glm::vec3>(after));
+	}
+	if (std::holds_alternative<glm::vec4>(after)) {
+		return MergeComponents<glm::vec4, 4>(std::get<glm::vec4>(target), std::get<glm::vec4>(before), std::get<glm::vec4>(after));
+	}
+	return before == after ? target : after;
 }
 
 // ---- Batches ---------------------------------------------------------------------------------------

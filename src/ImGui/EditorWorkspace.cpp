@@ -12,6 +12,7 @@
 #include "../LightNode.h"
 #include "../BaseLight.h"
 #include "../ModularRenderer.h"
+#include "../GizmoRayCast.h"
 #include "../UiIconAtlas.h"
 #include "../Scene.h"
 #include "../SceneGraph.h"
@@ -851,6 +852,49 @@ void EditorWorkspace::DrawGizmo(const Viewport& vp)
 	m_wasUsingGizmo = using_;
 }
 
+namespace {
+
+// Pivot of a group gizmo: the centre of the nodes' bounds when any of them has a model, else the centroid of their
+// world positions.
+glm::vec3 GroupPivot(const std::vector<std::shared_ptr<SceneNode>>& nodes)
+{
+	bool anyModel = false;
+	for (const auto& n : nodes) anyModel = anyModel || n->GetModel() != nullptr;
+	if (anyModel) {
+		const auto [lo, hi] = GizmoRayCast::CalculateMultiSelectionBounds(nodes);
+		return (lo + hi) * 0.5f;
+	}
+	glm::vec3 centre(0.0f);
+	for (const auto& n : nodes) centre += n->GetWorldPosition();
+	return nodes.empty() ? centre : centre / static_cast<float>(nodes.size());
+}
+
+// Applies a world-space group delta to one top-level node. The position goes through the whole delta; the orientation
+// takes the delta's rotation (composed in world space, so no shear from the rotation); the scale takes the delta's
+// scale: uniform scale multiplies the world scale exactly, non-uniform scale multiplies each axis of the node's own
+// frame (documented in docs/editor.md, since a rotated node cannot take a non-uniform world scale without shearing).
+void ApplyGroupDelta(const std::shared_ptr<SceneNode>& node, const glm::mat4& delta)
+{
+	glm::vec3 dScale, dTrans, dSkew;
+	glm::quat dRot;
+	glm::vec4 dPersp;
+	glm::decompose(delta, dScale, dRot, dTrans, dSkew, dPersp);
+
+	glm::vec3 scale, trans, skew;
+	glm::quat rot;
+	glm::vec4 persp;
+	glm::decompose(node->GetWorldPosition4x4(), scale, rot, trans, skew, persp);
+
+	const glm::vec3 newTrans = glm::vec3(delta * glm::vec4(trans, 1.0f));
+	const glm::quat newRot = glm::normalize(dRot * rot);
+	const bool uniform = std::abs(dScale.x - dScale.y) < 1e-4f && std::abs(dScale.y - dScale.z) < 1e-4f;
+	const glm::vec3 newScale = uniform ? scale * dScale.x : scale * dScale;
+	const glm::mat4 world = glm::translate(glm::mat4(1.0f), newTrans) * glm::mat4_cast(newRot) * glm::scale(glm::mat4(1.0f), newScale);
+	node->SetWorldTransform(world);
+}
+
+} // namespace
+
 // Several nodes selected: one gizmo at the centre of their top-level nodes. Dragging moves, turns or scales each
 // top-level node about that pivot (its children follow it). One undo step per drag. Rotation and non-uniform scale
 // of a node that is already rotated can shear it, as with any world-space group transform.
@@ -862,12 +906,7 @@ void EditorWorkspace::DrawGroupGizmo(const Viewport& vp)
 		m_wasUsingGizmo = false;
 		return;
 	}
-	if (!m_wasUsingGizmo) {
-		glm::vec3 centre(0.0f);
-		for (const auto& n : top) centre += n->GetWorldPosition();
-		centre /= static_cast<float>(top.size());
-		m_groupModel = glm::translate(glm::mat4(1.0f), centre);
-	}
+	if (!m_wasUsingGizmo) m_groupModel = glm::translate(glm::mat4(1.0f), GroupPivot(top));
 	ImGuizmo::SetOrthographic(false);
 	ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
 	ImGuizmo::SetRect(vp.pos.x, vp.pos.y, vp.size.x, vp.size.y);
@@ -886,8 +925,8 @@ void EditorWorkspace::DrawGroupGizmo(const Viewport& vp)
 			m_groupBefore.clear();
 			for (const auto& n : top) m_groupBefore.push_back({ n, CaptureTRS(n) });
 		}
-		const glm::mat4 delta = m_groupModel * glm::inverse(pre);
-		for (const auto& n : top) n->SetWorldTransform(delta * n->GetWorldPosition4x4());
+		const glm::mat4 delta = m_groupModel * glm::inverse(pre);   // pivotT * (this frame's R, S) * pivotT^-1, with the move
+		for (const auto& n : top) ApplyGroupDelta(n, delta);
 		m_core.InvalidateSceneCaches();
 	}
 	if (m_wasUsingGizmo && !using_) {
@@ -1525,6 +1564,7 @@ void EditorWorkspace::DrawInspector()
 	ImGui::End();
 	// Safety net: a continuous edit whose widget is gone ends once no item is active.
 	if (m_propEdit.active && !ImGui::IsAnyItemActive()) EndPropertyEdit(m_propEdit, m_nodeTable, UndoSink());
+	if (m_multiActive && !ImGui::IsAnyItemActive()) EndMultiEdit();
 }
 
 // Node names for NodeRef pickers (flattened scene graph, root excluded).
@@ -1565,6 +1605,7 @@ void EditorWorkspace::DrawPhysics()
 	ImGui::End();
 	// Safety net: a continuous edit whose widget is gone ends once no item is active.
 	if (m_propEdit.active && !ImGui::IsAnyItemActive()) EndPropertyEdit(m_propEdit, m_nodeTable, UndoSink());
+	if (m_multiActive && !ImGui::IsAnyItemActive()) EndMultiEdit();
 }
 
 void EditorWorkspace::DrawPlayBanner()
@@ -1604,13 +1645,32 @@ void EditorWorkspace::DrawComponentSection(const std::shared_ptr<SceneNode>& nod
 		if (!prop.AppliesTo(*node)) continue;
 		PropValue value;
 		if (!nox::reflect::GetProperty(*node, desc.name, prop.name, value)) continue;
+		// Multi-edit: the other selected nodes that have this property take the same edit.
+		std::vector<std::shared_ptr<SceneNode>> targets{ node };
+		for (const auto& other : m_selection.Nodes()) {
+			PropValue ignored;
+			if (other && other != node && nox::reflect::GetProperty(*other, desc.name, prop.name, ignored) && prop.AppliesTo(*other)) targets.push_back(other);
+		}
+		const bool multi = targets.size() > 1;
+		bool mixed = false;
+		for (size_t i = 1; i < targets.size(); ++i) {
+			PropValue other;
+			if (nox::reflect::GetProperty(*targets[i], desc.name, prop.name, other) && !(other == value)) mixed = true;
+		}
 
-		solace::PropertyLabel(prop.label.c_str(), prop.tooltip.empty() ? nullptr : prop.tooltip.c_str());
+		const std::string label = mixed ? std::string(prop.label) + "  (mixed)" : prop.label;
+		solace::PropertyLabel(label.c_str(), prop.tooltip.empty() ? nullptr : prop.tooltip.c_str());
 		const std::string widgetId = desc.name + "." + prop.name;
-		const bool ownsEdit = m_propEdit.active && m_propEdit.component == desc.name && m_propEdit.property == prop.name
+		const bool multiOwned = m_multiActive && m_multiComponent == desc.name && m_multiProperty == prop.name;
+		const bool ownsEdit = !multi && m_propEdit.active && m_propEdit.component == desc.name && m_propEdit.property == prop.name
 			&& m_nodeTable.Resolve(m_propEdit.node) == node;
+		const PropValue before = value;   // the primary's value before this frame's widget edit
 		const nox::editor::PropertyWidgetResult r = nox::editor::DrawPropertyWidget(prop, value, assets, nodeNames, widgetId.c_str());
-		if (r.changed) {
+		if (r.changed && multi) {
+			ApplyMultiEdit(targets, desc.name, prop.name, before, value, !multiOwned && r.final);
+			NoteEdit();
+		}
+		else if (r.changed) {
 			std::string error;
 			bool ok;
 			if (!ownsEdit && r.final) {
@@ -1627,6 +1687,7 @@ void EditorWorkspace::DrawComponentSection(const std::shared_ptr<SceneNode>& nod
 		const bool stillOwned = m_propEdit.active && m_propEdit.component == desc.name && m_propEdit.property == prop.name
 			&& m_nodeTable.Resolve(m_propEdit.node) == node;
 		if (stillOwned && (r.final || !r.active)) EndPropertyEdit(m_propEdit, m_nodeTable, UndoSink());
+		if (multiOwned && (r.final || !r.active)) EndMultiEdit();
 		// A Lua script reference (asset path ending in .lua) gets a button to open it in the external editor.
 		const std::string* assetPath = prop.type == nox::reflect::PropType::AssetPath ? std::get_if<std::string>(&value) : nullptr;
 		if (assetPath && assetPath->size() > 4 && assetPath->compare(assetPath->size() - 4, 4, ".lua") == 0) {
@@ -2711,6 +2772,24 @@ void EditorWorkspace::RunSmokeScript()
 			check(m_selection.Size() == topLevel && topLevel > 0, "ctrl+a selects all top-level nodes");
 			m_selection.Clear();
 			m_legacy.SetSelectedNode(nullptr);
+			// Multi-edit: a name set on the primary goes to all three selected nodes, and one undo reverts all three.
+			{
+				// The undo of the delete above re-created the three nodes: look them up again by name.
+				std::vector<std::shared_ptr<SceneNode>> live;
+				for (const auto& c : root->children) if (c && c->GetName().rfind("SmokeSel", 0) == 0) live.push_back(c);
+				check(live.size() == 3, "smoke: three nodes restored by undo");
+				if (live.size() == 3) {
+					m_selection.SetAll(live);
+					m_legacy.SetSelectedNode(m_selection.Primary());
+					const std::string primaryName = live[2]->GetName();
+					ApplyMultiEdit(live, "Node", "name", nox::reflect::PropValue(primaryName), nox::reflect::PropValue(std::string("SmokeMulti")), true);
+					check(live[0]->GetName() == "SmokeMulti" && live[1]->GetName() == "SmokeMulti" && live[2]->GetName() == "SmokeMulti",
+						"multi-edit sets the property on all three selected nodes");
+					Undo();
+					check(live[0]->GetName() == "SmokeSel0" && live[1]->GetName() == "SmokeSel1" && live[2]->GetName() == "SmokeSel2",
+						"one undo reverts the multi-edit on all three nodes");
+				}
+			}
 			// Leave the scene as it was: delete the three nodes this block made (their restore is the saved file's job).
 			std::vector<std::shared_ptr<SceneNode>> made;
 			for (const auto& c : root->children) if (c && c->GetName().rfind("SmokeSel", 0) == 0) made.push_back(c);

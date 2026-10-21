@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -36,6 +37,46 @@ const ImU32 kMarqueeFill = IM_COL32(255, 210, 90, 40);
 const ImU32 kMarqueeLine = IM_COL32(255, 210, 90, 255);
 
 } // namespace
+
+void EditorWorkspace::ApplyMultiEdit(const NodeList& targets, const std::string& component, const std::string& property,
+	const nox::reflect::PropValue& before, const nox::reflect::PropValue& after, bool discrete)
+{
+	if (targets.empty()) return;
+	if (!discrete && !m_multiActive) {
+		m_multiActive = true;
+		m_multiComponent = component;
+		m_multiProperty = property;
+		m_multiLabel = component + "." + property;
+		m_multiEdits.clear();
+	}
+	if (!discrete) m_multiEdits.resize(targets.size());
+	// Each target gets the primary's edit merged into its own value: only the components the edit changed are written.
+	nox::editor::UndoBatch batch;
+	std::string error;
+	bool allOk = true;
+	for (size_t i = 0; i < targets.size(); ++i) {
+		nox::reflect::PropValue current;
+		if (!nox::reflect::GetProperty(*targets[i], component, property, current)) continue;
+		const nox::reflect::PropValue merged = nox::editor::MergeEditedValue(current, before, after);
+		const bool ok = discrete
+			? nox::editor::SetPropertyUndoable(m_nodeTable, batch.Sink(), targets[i], component, property, merged, &error)
+			: nox::editor::SetPropertyContinuous(m_multiEdits[i], m_nodeTable, targets[i], component, property, merged, &error);
+		allOk = allOk && ok;
+	}
+	if (!allOk) ui::Toast(error.empty() ? "Value rejected by some nodes" : error, ui::ToastKind::Warning);
+	if (discrete) batch.Commit(component + "." + property, UndoSink());
+	NoteEdit();
+}
+
+void EditorWorkspace::EndMultiEdit()
+{
+	if (!m_multiActive) return;
+	nox::editor::UndoBatch batch;
+	for (nox::editor::PropertyEdit& edit : m_multiEdits) nox::editor::EndPropertyEdit(edit, m_nodeTable, batch.Sink());
+	batch.Commit(m_multiLabel, UndoSink());
+	m_multiEdits.clear();
+	m_multiActive = false;
+}
 
 void EditorWorkspace::SyncSelection()
 {
@@ -229,11 +270,30 @@ void EditorWorkspace::UpdateMarquee(const ImGuiIO& io, ImDrawList* dl)
 	const ImVec2 hi(std::max(m_marqueeStart.x, io.MousePos.x), std::max(m_marqueeStart.y, io.MousePos.y));
 	NodeList all;
 	if (const auto root = RootNode()) CollectAuthored(root, all);
+	// A node with a model is selected when its world bounding box, projected to the viewport, overlaps the rectangle.
+	// Other nodes (lights, cameras, empty nodes) are selected when their origin lies inside it.
+	auto inRect = [&](const std::shared_ptr<SceneNode>& n) {
+		if (!n->GetModel()) {
+			ImVec2 p;
+			return ProjectToViewport(m_scene, n->GetWorldPosition(), p) && p.x >= lo.x && p.x <= hi.x && p.y >= lo.y && p.y <= hi.y;
+		}
+		const auto [bmin, bmax] = n->GetBoundingBox();
+		const glm::mat4 world = n->GetWorldPosition4x4();
+		const float big = std::numeric_limits<float>::max();
+		float minX = big, minY = big, maxX = -big, maxY = -big;
+		bool any = false;
+		for (int i = 0; i < 8; ++i) {
+			const glm::vec3 corner((i & 1) ? bmax.x : bmin.x, (i & 2) ? bmax.y : bmin.y, (i & 4) ? bmax.z : bmin.z);
+			ImVec2 p;
+			if (!ProjectToViewport(m_scene, glm::vec3(world * glm::vec4(corner, 1.0f)), p)) continue;
+			any = true;
+			minX = std::min(minX, p.x); maxX = std::max(maxX, p.x);
+			minY = std::min(minY, p.y); maxY = std::max(maxY, p.y);
+		}
+		return any && maxX >= lo.x && minX <= hi.x && maxY >= lo.y && minY <= hi.y;
+	};
 	NodeList inside;
-	for (const auto& n : all) {
-		ImVec2 p;
-		if (ProjectToViewport(m_scene, n->GetWorldPosition(), p) && p.x >= lo.x && p.x <= hi.x && p.y >= lo.y && p.y <= hi.y) inside.push_back(n);
-	}
+	for (const auto& n : all) if (inRect(n)) inside.push_back(n);
 	if (io.KeyCtrl) {
 		for (const auto& n : inside) m_selection.Add(n);
 	}

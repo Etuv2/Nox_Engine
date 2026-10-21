@@ -6,10 +6,12 @@
 
 #include "SceneNode.h"
 #include "editor/Clipboard.h"
+#include "editor/InspectorUndo.h"
 #include "editor/Selection.h"
 
 #include <memory>
 #include <string>
+#include <variant>
 #include <vector>
 
 using nox::editor::Selection;
@@ -154,4 +156,20 @@ NOX_TEST(EditorClipboard, UniqueSiblingNameCountsUpFromTheStem)
 	NOX_CHECK_EQ(UniqueSiblingName("Crate (1)", { "Crate (1)" }), std::string("Crate (2)"));
 	NOX_CHECK_EQ(UniqueSiblingName("Crate (1)", { "Crate (1)", "Crate (2)" }), std::string("Crate (3)"));
 	NOX_CHECK_EQ(UniqueSiblingName("Box (old)", { "Box (old)" }), std::string("Box (old) (1)"));
+}
+
+NOX_TEST(EditorMultiEdit, MergeKeepsUnchangedComponentsOfEachTarget)
+{
+	using nox::reflect::PropValue;
+	const PropValue before = glm::vec3(0.0f, 0.0f, 0.0f);
+	const PropValue after = glm::vec3(5.0f, 0.0f, 0.0f);    // only x changed
+	const PropValue target = glm::vec3(1.0f, 2.0f, 3.0f);
+	const PropValue merged = nox::editor::MergeEditedValue(target, before, after);
+	NOX_REQUIRE(std::holds_alternative<glm::vec3>(merged));
+	const glm::vec3 v = std::get<glm::vec3>(merged);
+	NOX_CHECK(v.x == 5.0f && v.y == 2.0f && v.z == 3.0f);
+
+	NOX_CHECK(nox::editor::MergeEditedValue(PropValue(std::string("a")), PropValue(std::string("x")), PropValue(std::string("y"))) == PropValue(std::string("y")));
+	NOX_CHECK(nox::editor::MergeEditedValue(PropValue(std::string("a")), PropValue(std::string("x")), PropValue(std::string("x"))) == PropValue(std::string("a")));
+	NOX_CHECK(nox::editor::MergeEditedValue(PropValue(int64_t(4)), PropValue(int64_t(1)), PropValue(int64_t(2))) == PropValue(int64_t(2)));
 }

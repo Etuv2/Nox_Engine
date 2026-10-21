@@ -184,6 +184,11 @@ private:
 	void DuplicateSelectionWithUndo();
 	bool NodeShortcutScope() const;      // hierarchy or scene viewport has keyboard focus
 	void UpdateMarquee(const ImGuiIO& io, ImDrawList* dl);
+	// Multi-edit: one property write applied to every target (the selected nodes that have the property). Discrete
+	// writes are one undo step; a continuous edit (drag) is one step when it ends (EndMultiEdit).
+	void ApplyMultiEdit(const std::vector<std::shared_ptr<SceneNode>>& targets, const std::string& component,
+		const std::string& property, const nox::reflect::PropValue& before, const nox::reflect::PropValue& after, bool discrete);
+	void EndMultiEdit();
 	void RequestScene(const std::string& path);
 
 	Core& m_core;
@@ -249,6 +254,10 @@ private:
 	nox::editor::Selection m_selection;
 	std::vector<std::shared_ptr<SceneNode>> m_visibleRows;
 	bool m_hierarchyFocused = false;
+	// Multi-edit of a continuous property (one PropertyEdit per target, same order as the targets).
+	std::vector<nox::editor::PropertyEdit> m_multiEdits;
+	bool m_multiActive = false;
+	std::string m_multiComponent, m_multiProperty, m_multiLabel;
 	bool m_marquee = false;
 	ImVec2 m_marqueeStart{ 0.0f, 0.0f };
 

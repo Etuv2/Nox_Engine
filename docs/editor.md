@@ -58,7 +58,7 @@ and Rename work on the primary. Selection is an editor state: it is not saved in
 | Select one node | Click | Click (the node under the mouse) |
 | Add or remove a node | Ctrl+click | Ctrl+click |
 | Select the visible rows between the primary and a row | Shift+click | not used |
-| Box select | not used | Drag on empty space. Every authored node whose origin falls in the rectangle is selected. Ctrl adds them |
+| Box select | not used | Drag on empty space. A node with a model is selected when its world bounding box, projected to the viewport, overlaps the rectangle; other nodes when their origin is inside it. Ctrl adds them |
 | Select all top-level nodes | Ctrl+A | Ctrl+A |
 | Copy, cut, paste | Ctrl+C, Ctrl+X, Ctrl+V | the same keys |
 | Duplicate | Ctrl+D | Ctrl+D |
@@ -75,11 +75,23 @@ The **Edit** menu has the same commands.
   are made unique among the siblings (`Crate (1)`). The copies keep their local transforms, so the layout of a
   copied set is kept. New nodes get new scene nodes, not the old ones.
 - Copy, cut, paste, duplicate, delete and select-all each record one undo step, also when several nodes are involved.
-- **Group gizmo.** With several nodes selected the gizmo sits at the centre of their top-level nodes. A drag moves,
-  turns or scales each top-level node about that point, and children follow their parent. One undo step per drag.
-  A node that is already rotated can shear under a rotation or a non-uniform scale of the group.
-- **Not done yet:** editing one property on several nodes at once. The Inspector shows the primary node with a
-  "N selected" line, and an edit applies to the primary only.
+- **Group gizmo.** With several nodes selected the gizmo sits at the pivot: the centre of the bounds of the selection
+  when a node has a model (the bounds include the origin of nodes without one), else the centroid of their world
+  positions. A drag moves, turns or scales each top-level node about the pivot, and children follow their parent.
+  One undo step per drag. Each node's world transform is composed from the drag's delta (`pivotT * R * S * pivotT^-1`):
+  the position goes through the whole delta, the rotation is composed in world space, and the node is written back as
+  translation, rotation and scale (decomposed from the composed matrix, not sheared). Uniform scale multiplies the
+  node's scale exactly. **Non-uniform scale** of a node that is already rotated cannot be a world-space scale without
+  shearing, so it is applied along each node's own local axes instead: the result is a rotated, stretched node, not
+  the exact world-axis stretch the gizmo shows.
+- **Multi-edit in the Inspector.** When several selected nodes have a property (the same component and name), an edit
+  on the primary applies to all of them. Vector components are merged: only the components the edit changed are
+  written, so the other components keep each node's own value. Numbers, toggles, vectors, colours, text and enums
+  all work this way. A property whose values differ between the nodes is labelled "(mixed)" and shows the primary's
+  value. One discrete edit is one undo step, and a drag is one step when it ends.
+- Editing a property on several nodes at once is limited to the properties the Inspector draws from the registry.
+  Anything that is not a property (editor buttons, the Materials window, the Physics window) still acts on the
+  primary only.
 
 ## Inspector
 
@@ -348,7 +360,7 @@ project panel and the console.
 to the console. They cover undo and redo of a transform edit, Play and Stop restoring the pre-play state,
 viewport resize, saving, the Content Browser (it opens `models/` and lists its contents), a Physics window
 edit with its undo, and multi-selection (Ctrl+click, copy and paste with unique names and kept transforms, one undo
-per command, multi-node delete, select all). The mouse parts of selection (marquee, Shift+click) are not in the
+per command, multi-node delete, select all, a multi-edit of a name on three nodes reverted by one undo). The mouse parts of selection (marquee, Shift+click) are not in the
 smoke test. Use it for unattended validation of editor changes:
 
 ```powershell
