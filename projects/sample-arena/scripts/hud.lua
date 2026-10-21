@@ -2,6 +2,7 @@
 -- Nothing here is engine-specific. Fonts "label" and "digits" and the icon "hud/speedometer" are declared in project.json.
 
 local Menu = require("menu")
+local Music = require("music")
 
 local hud = { throttle = 0, steer = 0, shots = 0, visible = true }
 
@@ -11,6 +12,7 @@ nox.system{
   update = function(ctx, dt)
     -- Menus own the pointer; while one is open the car does not move and the engine fades out (audio paused).
     local blocked = Menu.blocking()
+    Music.menuChanged(blocked)
     ctx:set_wants_pointer(blocked or hud.visible)
     if blocked then
       ctx:audio_set({ paused = true })
