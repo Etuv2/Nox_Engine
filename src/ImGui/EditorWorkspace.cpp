@@ -513,6 +513,9 @@ void EditorWorkspace::DrawMenuBar()
 			DrawAddNodeItems();
 			ImGui::EndMenu();
 		}
+		if (ImGui::MenuItem("Add collision to selection (recursive)", nullptr, false, !m_core.IsPlaying() && m_selection.Size() > 0)) {
+			AddStaticCollisionToSelection();
+		}
 		ImGui::EndMenu();
 	}
 	if (ImGui::BeginMenu("Window")) {

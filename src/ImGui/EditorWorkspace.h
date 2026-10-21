@@ -196,6 +196,7 @@ private:
 	void PasteFromClipboard();
 	void SelectAllTopLevel();
 	void DeleteSelectionWithUndo();
+	void AddStaticCollisionToSelection();   // Node menu: StaticCollision on each selected node (one undo step)
 	void DuplicateSelectionWithUndo();
 	bool NodeShortcutScope() const;      // hierarchy or scene viewport has keyboard focus
 	void UpdateMarquee(const ImGuiIO& io, ImDrawList* dl);

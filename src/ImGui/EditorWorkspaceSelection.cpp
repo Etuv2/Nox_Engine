@@ -10,6 +10,7 @@
 #include "../editor/Clipboard.h"
 #include "../editor/InspectorUndo.h"
 #include "../editor/Selection.h"
+#include "../reflect/Reflection.h"
 #include <IMGUI/imgui.h>
 #include <IMGUI/ImGuizmo.h>
 #include <algorithm>
@@ -178,6 +179,26 @@ void EditorWorkspace::SelectAllTopLevel()
 	for (const auto& c : root->children) if (c && !c->IsGenerated()) top.push_back(c);
 	m_selection.SetAll(top);
 	m_legacy.SetSelectedNode(m_selection.Primary());
+}
+
+void EditorWorkspace::AddStaticCollisionToSelection()
+{
+	if (m_core.IsPlaying()) return;
+	const nox::reflect::ComponentDesc* desc = nox::reflect::Registry::Get().Find("StaticCollision");
+	if (!desc) return;
+	NodeList targets;
+	for (const auto& n : m_selection.TopLevel()) if (n) targets.push_back(n);
+	if (targets.empty()) return;
+
+	// The component covers each node's whole subtree (include_children), so the models below get colliders too.
+	nox::editor::UndoBatch batch;
+	const nox::editor::UndoPush sink = batch.Sink();
+	bool changed = false;
+	for (const auto& n : targets) {
+		changed = nox::editor::AddComponentUndoable(m_nodeTable, sink, n, *desc) || changed;
+	}
+	batch.Commit("Add collision to " + std::to_string(targets.size()) + (targets.size() == 1 ? " node" : " nodes"), UndoSink());
+	if (changed) NoteEdit();
 }
 
 void EditorWorkspace::DeleteSelectionWithUndo()
