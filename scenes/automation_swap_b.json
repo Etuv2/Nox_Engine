@@ -1,0 +1,48 @@
+{
+  "exposure": 1,
+  "gamma": 2.2,
+  "nodes": [
+    {
+      "name": "E2E_SwapBox",
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/cube.glb",
+          "render_whole_model": false
+        }
+      },
+      "path": "models/cube.glb",
+      "position": [0.0, 0.0, 0.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "scale": [1.0, 1.0, 1.0],
+      "type": "model"
+    },
+    {
+      "components": {
+        "Light": {
+          "cast_shadows": true,
+          "color": [1.0, 1.0, 1.0],
+          "enabled": true,
+          "intensity": 6.0,
+          "range": 40.0,
+          "source_radius": 0.0
+        }
+      },
+      "light": {
+        "castsShadows": true,
+        "color": [1.0, 1.0, 1.0],
+        "enabled": true,
+        "intensity": 6.0,
+        "range": 40.0,
+        "type": "point"
+      },
+      "name": "E2E_SwapLight",
+      "position": [0.0, 5.0, 0.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "type": "light"
+    }
+  ],
+  "scene_name": "automation swap b",
+  "skybox": "hdrs/overcast_sky.hdr"
+}

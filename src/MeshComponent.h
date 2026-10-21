@@ -368,6 +368,9 @@ public:
 		hasAlpha(false), doubleSided(false) {
 	}
 
+	// Owns its GPU vertex input and buffers: released with the mesh (scene swaps, model reloads, scene destruction).
+	~MeshComponent() { Cleanup(); }
+
 	// Move constructor
 	MeshComponent(MeshComponent&& other) noexcept
 		: VAO(other.VAO)

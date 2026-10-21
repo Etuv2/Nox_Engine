@@ -221,22 +221,17 @@ std::vector<ModelHotReloader::Outcome> ModelHotReloader::Reload(ModelManager& mo
 
 void ModelHotReloader::FreeRetired()
 {
-    // Scene has no destructor that releases GL vertex inputs (MeshComponent::Cleanup does), so a model nobody else holds
-    // is cleaned up here. Its buffers and textures go with the last reference.
-    // A render item cache may still hold the model until the next frame is prepared, so a model that is still shared is
-    // kept for a few frames before it is given up.
+    // A replaced model is released with its last reference: MeshComponent frees its GPU vertex input and buffers in
+    // its destructor. A render item cache may still hold the model until the next frame is prepared, so a model that
+    // is still shared is kept for a few frames before the retired entry is dropped.
     constexpr int kMaxFramesHeld = 3;
     std::vector<Retired> keep;
     for (Retired& retired : m_retired) {
-        if (retired.model.use_count() == 1) {
-            retired.model->Cleanup();
-            continue;
-        }
+        if (retired.model.use_count() == 1) continue;  // last reference: destroyed with this entry
         if (++retired.framesHeld < kMaxFramesHeld) {
             keep.push_back(std::move(retired));
-            continue;
         }
-        std::cerr << "[HotReload] a replaced model is still in use; its GPU vertex inputs are not freed" << std::endl;
+        // else: dropped here; the model lives on in its remaining users and is released with the last of them.
     }
     m_retired = std::move(keep);
 }

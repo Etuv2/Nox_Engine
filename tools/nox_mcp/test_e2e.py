@@ -387,6 +387,36 @@ def run_checks(proc):
                     pass
             shutil.rmtree(hot_dir, ignore_errors=True)
 
+        # Scene lifetime: round trips A -> B -> A through the normal scene swap. Scene and MeshComponent release their GPU
+        # objects with the scene, so every return to A must leave gpu_objects where the first A load left them.
+        scene_b = "scenes/automation_swap_b.json"
+
+        def swap_and_settle(path):
+            nox.call("scene.load", {"path": path})
+            deadline = time.monotonic() + READY_TIMEOUT_S
+            while time.monotonic() < deadline:
+                info = nox.call("engine.info")
+                if scene_ready(info) and info.get("scene", "").endswith(os.path.basename(path)):
+                    time.sleep(1.0)  # retired render items and model reloads settle over a few frames
+                    return nox.call("engine.info").get("gpu_objects", {})
+                time.sleep(0.25)
+            return None
+
+        # One warm-up round trip first: the first visit to scene B adds a one-time set of cached objects.
+        swap_and_settle(scene_b)
+        swap_base = swap_and_settle(SCENE)
+        swap_counts = []
+        for _ in range(5):
+            swap_to_b = swap_and_settle(scene_b)
+            swap_back = swap_and_settle(SCENE)
+            swap_counts.append((swap_to_b, swap_back))
+        check("5 round trips A -> B -> A complete", swap_base is not None and all(
+            pair[0] is not None and pair[1] is not None for pair in swap_counts),
+              f"base={swap_base} trips={len(swap_counts)}")
+        check("5 scene round trips leave gpu_objects unchanged",
+              all(back == swap_base for _, back in swap_counts),
+              f"base={swap_base} returns={[back for _, back in swap_counts]}")
+
         # Protocol robustness
         bad = raw_line_roundtrip(b"{this is not json")
         check("malformed JSON gets a parse error (-32700)", bad.get("error", {}).get("code") == -32700)
@@ -404,6 +434,9 @@ def run_checks(proc):
         check("engine.quit exits the process cleanly", code == 0, f"exit code {code}")
     except subprocess.TimeoutExpired:
         check("engine.quit exits the process cleanly", False, "still running after 60 s")
+    # Static teardown runs after main returns: a crash there only shows up as a [CrashHandler] line in the log.
+    log_text = (LOG_DIR / f"e2e_engine_{PORT}.log").read_text(encoding="utf-8", errors="replace")
+    check("the engine log has no [CrashHandler] line", "[CrashHandler]" not in log_text)
 
 
 if __name__ == "__main__":

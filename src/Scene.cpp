@@ -1624,7 +1624,8 @@ bool Scene::LoadFromGLTF(const std::string& path, const std::shared_ptr<Prepared
 		// Process-wide sharing for external images (relative-URI textures referenced by many glTF
 		// files, e.g. world chunks sharing one texture set): one GPU texture per resolved file, sRGB
 		// flag and sampler. Weak references, so textures are released with their last user.
-		static std::unordered_map<std::string, std::weak_ptr<Texture>> s_sharedImages;
+		// Never destroyed (see FileTextures in Texture.cpp): its exit-time destructor could release textures.
+		static auto& s_sharedImages = *new std::unordered_map<std::string, std::weak_ptr<Texture>>();
 		std::string sharedKey;
 		{
 			const tinygltf::Texture& t = model.textures[texIndex];
