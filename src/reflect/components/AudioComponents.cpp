@@ -2,6 +2,7 @@
 #include "../ComponentBuilders.h"
 #include "../../AudioNode.h"
 #include "../../SceneNode.h"
+#include "../../audio/AudioSpatial.h"
 
 namespace nox::reflect {
 
@@ -103,7 +104,52 @@ void RegisterAudioSource() {
 		});
 	bus.tooltip = "Mixer bus (master, music, sfx, ui, voice, or a project bus); the gain is source * bus * master";
 
-	c.properties = { sound, volume, pitch, hearing, loop, spatial, autoplay, bus, playing };
+	PropertyDesc attenuation = Prop("attenuation", PropType::String,
+		[](const SceneNode& n) {
+			const AudioNode* a = AudioOf(n);
+			return PropValue(std::string(AudioAttenuationName(a ? a->getAttenuation() : AudioAttenuation::Linear)));
+		},
+		[](SceneNode& n, const PropValue& v) {
+			AudioNode* a = AudioOf(n);
+			AudioAttenuation curve;
+			if (!a || !ParseAudioAttenuation(std::get<std::string>(v), curve)) return false;
+			a->setAttenuation(curve);
+			return true;
+		});
+	attenuation.tooltip = "Distance curve for 3D sources: linear (default), inverse, or power. Maximum distance is hearing_distance";
+
+	PropertyDesc minDistance = Ranged(Prop("min_distance", PropType::Float,
+		[](const SceneNode& n) { const AudioNode* a = AudioOf(n); return PropValue(static_cast<double>(a ? a->getMinDistance() : 0.0f)); },
+		[](SceneNode& n, const PropValue& v) {
+			AudioNode* a = AudioOf(n);
+			if (!a) return false;
+			a->setMinDistance(static_cast<float>(std::get<double>(v)));
+			return true;
+		}), 0.0, 100000.0, 0.5);
+	minDistance.tooltip = "Full volume inside this distance (inverse: reference distance)";
+
+	PropertyDesc rolloff = Ranged(Prop("rolloff", PropType::Float,
+		[](const SceneNode& n) { const AudioNode* a = AudioOf(n); return PropValue(static_cast<double>(a ? a->getRolloff() : 1.0f)); },
+		[](SceneNode& n, const PropValue& v) {
+			AudioNode* a = AudioOf(n);
+			if (!a) return false;
+			a->setRolloff(static_cast<float>(std::get<double>(v)));
+			return true;
+		}), 0.01, 16.0, 0.01);
+	rolloff.tooltip = "Inverse falloff factor, or the power curve exponent";
+
+	PropertyDesc occlusion = Prop("occlusion", PropType::Bool,
+		[](const SceneNode& n) { const AudioNode* a = AudioOf(n); return PropValue(a && a->getOcclusion()); },
+		[](SceneNode& n, const PropValue& v) {
+			AudioNode* a = AudioOf(n);
+			if (!a) return false;
+			a->setOcclusion(std::get<bool>(v));
+			return true;
+		});
+	occlusion.tooltip = "Attenuate the source when level geometry blocks the line to the listener";
+
+	c.properties = { sound, volume, pitch, hearing, loop, spatial, autoplay, bus, playing,
+		attenuation, minDistance, rolloff, occlusion };
 
 	c.methods.push_back(VoidMethod("play", "Start playback with the current loop and spatial settings",
 		[](SceneNode& n) {

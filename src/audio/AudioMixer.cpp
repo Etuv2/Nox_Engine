@@ -67,18 +67,70 @@ bool AudioMixer::SetBusVolume(const std::string& name, float volume) {
     std::lock_guard<std::mutex> lock(m_mutex);
     const int i = Find(name);
     if (i < 0) return false;
+    Bus& bus = m_buses[i];
     const float clamped = std::clamp(volume, 0.0f, 1.0f);
-    if (m_buses[i].volume != clamped) {
-        m_buses[i].volume = clamped;
+    bus.ducked = false;
+    if (bus.volume.Value() != clamped || bus.volume.Active()) {
+        bus.volume.Set(clamped);
         ++m_version;
     }
     return true;
 }
 
+bool AudioMixer::FadeBus(const std::string& name, float target, float seconds) {
+    if (!std::isfinite(target)) return false;
+    std::lock_guard<std::mutex> lock(m_mutex);
+    const int i = Find(name);
+    if (i < 0) return false;
+    Bus& bus = m_buses[i];
+    bus.ducked = false;
+    bus.volume.RampTo(std::clamp(target, 0.0f, 1.0f), seconds);
+    ++m_version;
+    return true;
+}
+
+bool AudioMixer::Duck(const std::string& name, float level, float seconds) {
+    if (!std::isfinite(level)) return false;
+    std::lock_guard<std::mutex> lock(m_mutex);
+    const int i = Find(name);
+    if (i < 0) return false;
+    Bus& bus = m_buses[i];
+    if (!bus.ducked) {
+        bus.ducked = true;
+        bus.duckBase = bus.volume.Target();
+    }
+    bus.volume.RampTo(std::clamp(level, 0.0f, 1.0f), seconds);
+    ++m_version;
+    return true;
+}
+
+bool AudioMixer::Unduck(const std::string& name, float seconds) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    const int i = Find(name);
+    if (i < 0 || !m_buses[i].ducked) return false;
+    Bus& bus = m_buses[i];
+    bus.ducked = false;
+    bus.volume.RampTo(bus.duckBase, seconds);
+    ++m_version;
+    return true;
+}
+
+bool AudioMixer::IsDucked(const std::string& name) const {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    const int i = Find(name);
+    return i >= 0 && m_buses[i].ducked;
+}
+
 float AudioMixer::BusVolume(const std::string& name) const {
     std::lock_guard<std::mutex> lock(m_mutex);
     const int i = Find(name);
-    return i < 0 ? 1.0f : m_buses[i].volume;
+    return i < 0 ? 1.0f : m_buses[i].volume.Value();
+}
+
+float AudioMixer::BusTargetVolume(const std::string& name) const {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    const int i = Find(name);
+    return i < 0 ? 1.0f : m_buses[i].volume.Target();
 }
 
 bool AudioMixer::SetBusMuted(const std::string& name, bool muted) {
@@ -102,10 +154,10 @@ float AudioMixer::BusGain(const std::string& name) const {
     std::lock_guard<std::mutex> lock(m_mutex);
     const int master = Find(kMasterBus);
     const int bus = Find(name);
-    const float masterVolume = master >= 0 ? m_buses[master].volume : 1.0f;
+    const float masterVolume = master >= 0 ? m_buses[master].volume.Value() : 1.0f;
     const bool masterMuted = master >= 0 && m_buses[master].muted;
     if (bus < 0) return ComputeGain(1.0f, 1.0f, false, masterVolume, masterMuted);
-    return ComputeGain(1.0f, m_buses[bus].volume, m_buses[bus].muted, masterVolume, masterMuted);
+    return ComputeGain(1.0f, m_buses[bus].volume.Value(), m_buses[bus].muted, masterVolume, masterMuted);
 }
 
 std::vector<std::string> AudioMixer::BusNames() const {
@@ -114,6 +166,15 @@ std::vector<std::string> AudioMixer::BusNames() const {
     names.reserve(m_buses.size());
     for (const Bus& b : m_buses) names.push_back(b.name);
     return names;
+}
+
+void AudioMixer::Tick(float dt) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    for (Bus& b : m_buses) {
+        if (!b.volume.Active()) continue;
+        b.volume.Tick(dt);
+        ++m_version;
+    }
 }
 
 uint64_t AudioMixer::Version() const {

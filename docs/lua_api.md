@@ -881,16 +881,24 @@ Details and a short tutorial: `docs/audio.md`.
 
 | Function | Notes |
 | --- | --- |
-| `audio.play_one_shot(path, opts)` | plays a sound once, at a world position or unspatialised. `opts` (all optional): `position = {x, y, z}` (3D, heard from the current listener), `bus` (default `"sfx"`), `volume` (0..1, default 1), `pitch` (0.1..10, default 1). Returns a handle, or `nil, error`. The gain is set when the sound starts |
-| `handle:stop()` / `handle.playing` | stops the sound if it still plays / true while it plays |
-| `audio.bus_volume(name)` / `audio.bus_volume(name, v)` | reads or sets a bus volume (0..1, clamped). Returns the volume, or `nil, error` for an unknown bus |
+| `audio.play_one_shot(path, opts)` | plays a sound once, at a world position or unspatialised. `opts` (all optional): `position = {x, y, z}` (3D, heard from the current listener), `bus` (default `"sfx"`), `volume` (0..1, default 1), `pitch` (0.1..10, default 1), `attenuation` (`"linear"`, `"inverse"` or `"power"`), `min_distance`, `max_distance`, `rolloff`, `occlusion` (boolean). Returns a handle, or `nil, error`. See `docs/audio.md` for the curves and occlusion |
+| `handle:stop([fade])` / `handle.playing` / `handle:is_playing()` | stops the sound (fading out over `fade` seconds first) / true while it plays or fades |
+| `handle:set_volume(v [, seconds])` / `handle:set_pitch(p [, seconds])` | sets the sound's volume (0..1) or pitch factor (0.1..10), ramped over `seconds` when given. False once the sound has ended |
+| `audio.bus_volume(name)` / `audio.bus_volume(name, v [, seconds])` | reads or sets a bus volume (0..1, clamped), ramped over `seconds` when given. Returns the volume, or `nil, error` for an unknown bus |
 | `audio.bus_mute(name)` / `audio.bus_mute(name, muted)` | reads or sets the mute flag. Returns the flag, or `nil, error` for an unknown bus |
+| `audio.duck(bus, level [, fade])` / `audio.unduck(bus [, fade])` | lowers a bus to `level` and restores the volume it had before; `unduck` on a bus that is not ducked returns `nil, error` |
 | `audio.buses()` | array of bus names: `master`, `music`, `sfx`, `ui`, `voice`, then the project's extras |
+| `audio.play_music(path, opts)` | streams a track on the `music` bus. `opts`: `loop` (default false), `volume` (0..1, default 1), `fade_in` (seconds), `bus` (default `"music"`). Replaces the current track at once. Returns true, or `nil, error` |
+| `audio.stop_music([opts])` | stops the track; `opts.fade_out` (seconds) fades it out first. A number is accepted as the fade. Returns true |
+| `audio.crossfade_music(path, seconds [, opts])` | dip crossfade: the current track fades out over half of `seconds`, then the new one fades in over the other half. Returns true, or `nil, error` |
+| `audio.set_music_volume(v [, seconds])` | ramps the track's level. Returns true |
+| `audio.music_playing()` / `audio.music_path()` | true while a track plays, fades or waits for a crossfade / the track's path, or nil |
+| `audio.music_position()` / `audio.music_seek(seconds)` | position in seconds (nil without a track or when the format cannot report it) / seeks, returns true when the format allows it |
 
 - Paths go through AssetIO like every other sound (loose files and packs, the same sandbox as `AudioNode`).
 - Without an audio device, or for a sound that does not load, `play_one_shot` returns `nil, error`; nothing raises.
-- Bus changes reach the sounds that are already playing (`AudioNode` sources and the procedural vehicle audio) on the
-  next frame. A one-shot keeps the gain it started with.
+- Bus changes reach the sounds that are already playing (`AudioNode` sources, one-shots and the procedural vehicle
+  audio) on the next frame. Fades, ducks and music run on the unscaled frame clock, so they finish while paused.
 - The 3D listener is the current `AudioListener` node (scene component `"AudioListener": { "current": true }`), or
   the camera when there is none. The listener is published each frame, so one-shots use the same pose as the
   sources. The listener's forward direction is its local `-Z`.

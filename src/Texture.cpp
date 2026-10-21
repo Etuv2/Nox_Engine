@@ -1,7 +1,12 @@
 #include "Texture.h"
+#include "assets/AssetIO.h"
 #include "assets/AssetIOImage.h"
+#include <chrono>
 #include <iostream>
 #include <algorithm>
+#include <map>
+#include <mutex>
+#include <set>
 #include <vector>
 #include <glm/glm.hpp>
 
@@ -25,6 +30,50 @@ namespace {
 	bool IsMultisample(TextureTarget t) {
 		return t == TextureTarget::Texture2DMultisample || t == TextureTarget::Texture2DMultisampleArray;
 	}
+
+	// Storage format for a decoded image with `channels` components.
+	void ChannelFormats(int channels, bool srgb, rhi::Format& internalFormat, rhi::PixelFormat& format) {
+		switch (channels) {
+		case 1:
+			internalFormat = rhi::Format::R8;
+			format = rhi::PixelFormat::R;
+			break;
+		case 2:
+			internalFormat = rhi::Format::RG8;
+			format = rhi::PixelFormat::RG;
+			break;
+		case 3:
+			format = rhi::PixelFormat::RGB;
+			internalFormat = srgb ? rhi::Format::SRGB8 : rhi::Format::RGB8;
+			break;
+		default:
+			format = rhi::PixelFormat::RGBA;
+			internalFormat = srgb ? rhi::Format::SRGB8_A8 : rhi::Format::RGBA8;
+			break;
+		}
+	}
+
+	// File-backed textures alive now, for hot reload. Textures are created and destroyed on the GL thread; the lock
+	// only guards the set against the poll reading it.
+	std::mutex& FileTexturesMutex() {
+		static std::mutex m;
+		return m;
+	}
+	std::set<Texture*>& FileTextures() {
+		static std::set<Texture*> s;
+		return s;
+	}
+}
+
+void Texture::RegisterFileTexture() {
+	if (sourcePath_.empty()) return;
+	std::lock_guard<std::mutex> lock(FileTexturesMutex());
+	FileTextures().insert(this);
+}
+
+void Texture::UnregisterFileTexture() {
+	std::lock_guard<std::mutex> lock(FileTexturesMutex());
+	FileTextures().erase(this);
 }
 
 // ===== Texture Class Implementation =====
@@ -54,24 +103,7 @@ Texture::Texture(const std::string& filepath, TextureType type, bool generateMip
 	}
 
 	// Determine formats based on channels
-	switch (channels) {
-	case 1:
-		internalFormat_ = rhi::Format::R8;
-		format_ = rhi::PixelFormat::R;
-		break;
-	case 2:
-		internalFormat_ = rhi::Format::RG8;
-		format_ = rhi::PixelFormat::RG;
-		break;
-	case 3:
-		format_ = rhi::PixelFormat::RGB;
-		internalFormat_ = srgb ? rhi::Format::SRGB8 : rhi::Format::RGB8;
-		break;
-	default:
-		format_ = rhi::PixelFormat::RGBA;
-		internalFormat_ = srgb ? rhi::Format::SRGB8_A8 : rhi::Format::RGBA8;
-		break;
-	}
+	ChannelFormats(channels, srgb, internalFormat_, format_);
 	dataType_ = rhi::PixelType::UByte;
 
 	Allocate();
@@ -81,6 +113,74 @@ Texture::Texture(const std::string& filepath, TextureType type, bool generateMip
 	}
 	SetParametersForType(generateMipmaps);
 	stbi_image_free(data);
+
+	sourcePath_ = filepath;
+	srgb_ = srgb;
+	if (const auto info = AssetIO::Stat(filepath); info && !info->isDirectory) {
+		sourceSize_ = info->size;
+		sourceMtime_ = info->modifiedTime;
+	}
+	RegisterFileTexture();
+}
+
+bool Texture::ReloadFromFile() {
+	if (sourcePath_.empty() || !id_) return false;
+	int width = 0, height = 0, channels = 0;
+	unsigned char* data = AssetIO::LoadImageFile(sourcePath_, &width, &height, &channels, 0);
+	if (!data) {
+		std::cerr << "[HotReload] could not decode " << sourcePath_ << "; keeping the previous pixels\n";
+		return false;
+	}
+	rhi::Format internalFormat = internalFormat_;
+	rhi::PixelFormat format = format_;
+	ChannelFormats(channels, srgb_, internalFormat, format);
+	if (internalFormat != internalFormat_) {
+		stbi_image_free(data);
+		std::cerr << "[HotReload] " << sourcePath_ << " changed its channel count; restart to pick it up\n";
+		return false;
+	}
+	if (width != width_ || height != height_) {
+		Resize(width, height, 1);
+	}
+	rhi::Gpu().UpdateTexture(id_, {}, format_, dataType_, data);
+	if (hasMipmaps_) {
+		rhi::Gpu().GenerateMipmaps(id_);
+	}
+	stbi_image_free(data);
+
+	if (const auto info = AssetIO::Stat(sourcePath_); info && !info->isDirectory) {
+		sourceSize_ = info->size;
+		sourceMtime_ = info->modifiedTime;
+	}
+	std::cout << "[HotReload] reloaded texture " << sourcePath_ << " (" << width << "x" << height << ")\n";
+	return true;
+}
+
+int ReloadChangedTextureFiles(double minIntervalSeconds) {
+	using Clock = std::chrono::steady_clock;
+	static Clock::time_point lastCheck{};
+	const Clock::time_point now = Clock::now();
+	if (lastCheck != Clock::time_point{} && std::chrono::duration<double>(now - lastCheck).count() < minIntervalSeconds) {
+		return 0;
+	}
+	lastCheck = now;
+
+	// Group by file: one stat per file, and the textures decoded from it are checked against that stat.
+	std::map<std::string, std::vector<Texture*>> byPath;
+	{
+		std::lock_guard<std::mutex> lock(FileTexturesMutex());
+		for (Texture* t : FileTextures()) byPath[t->SourcePath()].push_back(t);
+	}
+	int reloaded = 0;
+	for (const auto& [path, textures] : byPath) {
+		const auto info = AssetIO::Stat(path);
+		if (!info || info->isDirectory) continue;
+		for (Texture* t : textures) {
+			if (t->SourceMatches(info->size, info->modifiedTime)) continue;
+			if (t->ReloadFromFile()) ++reloaded;
+		}
+	}
+	return reloaded;
 }
 
 Texture::Texture(int width, int height, rhi::Format internalFormat, rhi::PixelFormat format,
@@ -100,6 +200,7 @@ Texture::Texture(int width, int height, rhi::Format internalFormat, rhi::PixelFo
 }
 
 Texture::~Texture() {
+	UnregisterFileTexture();
 	if (id_ && rhi::HasGpu()) {
 		rhi::Gpu().DestroyTexture(id_);
 	}
@@ -110,12 +211,27 @@ Texture::Texture(Texture&& other) noexcept
 	depth_(other.depth_), type_(other.type_), internalFormat_(other.internalFormat_),
 	format_(other.format_), dataType_(other.dataType_), hasMipmaps_(other.hasMipmaps_), wrapR_(other.wrapR_)
 {
+	other.UnregisterFileTexture();
+	sourcePath_ = std::move(other.sourcePath_);
+	srgb_ = other.srgb_;
+	sourceSize_ = other.sourceSize_;
+	sourceMtime_ = other.sourceMtime_;
+	other.sourcePath_.clear();
+	RegisterFileTexture();
 	other.id_ = {};
 }
 
 Texture& Texture::operator=(Texture&& other) noexcept {
 	if (this != &other) {
 		if (id_) rhi::Gpu().DestroyTexture(id_);
+		UnregisterFileTexture();
+		other.UnregisterFileTexture();
+		sourcePath_ = std::move(other.sourcePath_);
+		srgb_ = other.srgb_;
+		sourceSize_ = other.sourceSize_;
+		sourceMtime_ = other.sourceMtime_;
+		other.sourcePath_.clear();
+		RegisterFileTexture();
 
 		id_ = other.id_;
 		target_ = other.target_;

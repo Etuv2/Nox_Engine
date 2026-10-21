@@ -8,6 +8,9 @@
 #include <vector>
 #include <string>
 #include <set>
+#include <map>
+#include <cstdint>
+#include <ostream>
 #include <filesystem>
 #include <optional>
 #include "assets/AssetIO.h"
@@ -170,6 +173,10 @@ inline bool LoadFileWithIncludes(const char* path, std::string& out)
 // === Program creation (rhi::Device) ===
 // Sources are loaded here (with #include resolution); compilation and linking happen in the backend.
 // Every helper returns an invalid handle (and logs) when a file is missing or the program fails.
+//
+// Programs made by the file helpers remember their recipe (stage files, injected defines). ReloadAllShaderPrograms
+// rebuilds every recipe from disk and swaps the new program in under the same handle (Device::ReloadProgram); a
+// program that fails to compile or link keeps its previous version in use.
 
 inline rhi::ProgramHandle CreateProgramFromSources(std::vector<rhi::ShaderSource> stages, const std::string& name)
 {
@@ -189,6 +196,62 @@ inline bool LoadStage(const char* path, rhi::ShaderStage stage, std::vector<rhi:
     return true;
 }
 
+// One stage of a remembered program. injectDefines: the fragment is read without includes and the defines are placed
+// after its #version line (see CreateShaderProgram with defines).
+struct ShaderRecipeStage {
+    rhi::ShaderStage stage = rhi::ShaderStage::Vertex;
+    std::string path;
+    bool injectDefines = false;
+    std::vector<std::string> definesAfterVersion;
+    bool withIncludes = false;   // injectDefines only: resolve #include directives too (ComputeShader files)
+};
+
+struct ShaderRecipe {
+    std::string name;
+    std::vector<ShaderRecipeStage> stages;
+};
+
+// Recipes of the programs created by the file helpers, keyed by the program handle id.
+inline std::map<uint32_t, ShaderRecipe>& ShaderRecipeRegistry()
+{
+    static std::map<uint32_t, ShaderRecipe> registry;
+    return registry;
+}
+
+inline rhi::ProgramHandle RememberShaderRecipe(rhi::ProgramHandle handle, ShaderRecipe recipe)
+{
+    if (handle.IsValid()) ShaderRecipeRegistry()[handle.id] = std::move(recipe);
+    return handle;
+}
+
+// Builds the descriptor a recipe describes, reading every file again. False when a file is missing or empty.
+inline bool BuildShaderRecipeDesc(const ShaderRecipe& recipe, rhi::ProgramDesc& desc)
+{
+    desc = rhi::ProgramDesc{};
+    desc.debugName = recipe.name;
+    for (const ShaderRecipeStage& s : recipe.stages) {
+        rhi::ShaderSource src;
+        src.stage = s.stage;
+        src.debugPath = s.path;
+        if (!s.injectDefines) {
+            if (!LoadFileWithIncludes(s.path.c_str(), src.source)) return false;
+        }
+        else {
+            std::string fragCode;
+            const bool loaded = s.withIncludes ? LoadFileWithIncludes(s.path.c_str(), fragCode)
+                                               : LoadFileToString(s.path.c_str(), fragCode);
+            if (!loaded) return false;
+            const size_t pos = fragCode.find('\n');
+            std::string combined = fragCode.substr(0, pos + 1);
+            for (const auto& d : s.definesAfterVersion) combined += d + "\n";
+            combined += fragCode.substr(pos + 1);
+            src.source = std::move(combined);
+        }
+        desc.stages.push_back(std::move(src));
+    }
+    return true;
+}
+
 inline rhi::ProgramHandle CreateShaderProgram(const char* vertexShaderPath,
     const char* fragmentShaderPath)
 {
@@ -198,7 +261,12 @@ inline rhi::ProgramHandle CreateShaderProgram(const char* vertexShaderPath,
         std::cerr << "ERROR::SHADER::PROGRAM_CREATION_FAILED (load)\n";
         return {};
     }
-    return CreateProgramFromSources(std::move(stages), std::string(vertexShaderPath) + " + " + fragmentShaderPath);
+    const std::string name = std::string(vertexShaderPath) + " + " + fragmentShaderPath;
+    ShaderRecipe recipe;
+    recipe.name = name;
+    recipe.stages.push_back({ rhi::ShaderStage::Vertex, vertexShaderPath, false, {} });
+    recipe.stages.push_back({ rhi::ShaderStage::Fragment, fragmentShaderPath, false, {} });
+    return RememberShaderRecipe(CreateProgramFromSources(std::move(stages), name), std::move(recipe));
 }
 
 // Injects defines *after* the #version line of the fragment shader (fragment loaded without includes).
@@ -221,7 +289,12 @@ inline rhi::ProgramHandle CreateShaderProgram(const char* vertexShaderPath,
     fs.source = std::move(combined);
     fs.debugPath = fragmentShaderPath;
     stages.push_back(std::move(fs));
-    return CreateProgramFromSources(std::move(stages), std::string(vertexShaderPath) + " + " + fragmentShaderPath);
+    const std::string name = std::string(vertexShaderPath) + " + " + fragmentShaderPath;
+    ShaderRecipe recipe;
+    recipe.name = name;
+    recipe.stages.push_back({ rhi::ShaderStage::Vertex, vertexShaderPath, false, {} });
+    recipe.stages.push_back({ rhi::ShaderStage::Fragment, fragmentShaderPath, true, definesAfterVersion });
+    return RememberShaderRecipe(CreateProgramFromSources(std::move(stages), name), std::move(recipe));
 }
 
 // Create compute shader program
@@ -232,7 +305,10 @@ inline rhi::ProgramHandle CreateComputeShader(const char* computeShaderPath)
         std::cerr << "ERROR::COMPUTE_SHADER::LOAD_FAILED: " << computeShaderPath << "\n";
         return {};
     }
-    return CreateProgramFromSources(std::move(stages), computeShaderPath);
+    ShaderRecipe recipe;
+    recipe.name = computeShaderPath;
+    recipe.stages.push_back({ rhi::ShaderStage::Compute, computeShaderPath, false, {} });
+    return RememberShaderRecipe(CreateProgramFromSources(std::move(stages), computeShaderPath), std::move(recipe));
 }
 
 // Create shader program with geometry shader
@@ -247,5 +323,52 @@ inline rhi::ProgramHandle CreateShaderProgramWithGeometry(const char* vertexShad
         std::cerr << "ERROR::SHADER::GEOMETRY_PROGRAM_CREATION_FAILED\n";
         return {};
     }
-    return CreateProgramFromSources(std::move(stages), std::string(vertexShaderPath) + " + " + geometryShaderPath + " + " + fragmentShaderPath);
+    const std::string name = std::string(vertexShaderPath) + " + " + geometryShaderPath + " + " + fragmentShaderPath;
+    ShaderRecipe recipe;
+    recipe.name = name;
+    recipe.stages.push_back({ rhi::ShaderStage::Vertex, vertexShaderPath, false, {} });
+    recipe.stages.push_back({ rhi::ShaderStage::Geometry, geometryShaderPath, false, {} });
+    recipe.stages.push_back({ rhi::ShaderStage::Fragment, fragmentShaderPath, false, {} });
+    return RememberShaderRecipe(CreateProgramFromSources(std::move(stages), name), std::move(recipe));
+}
+
+struct ShaderReloadReport {
+    int reloaded = 0;   // new version compiled and linked
+    int kept = 0;       // source unreadable, or compile/link failed: the previous program stays in use
+    int stale = 0;      // the program was destroyed since it was created (recipe dropped)
+};
+
+// Rebuilds every remembered program from disk (the editor's "Reload shaders" command). Progress and failures are
+// written to `log` (the editor console captures std::cout).
+inline ShaderReloadReport ReloadAllShaderPrograms(std::ostream& log)
+{
+    ShaderReloadReport report;
+    if (!rhi::HasGpu()) return report;
+    auto& registry = ShaderRecipeRegistry();
+    for (auto it = registry.begin(); it != registry.end();) {
+        const rhi::ProgramHandle handle(it->first);
+        if (!rhi::Gpu().IsProgram(handle)) {
+            ++report.stale;
+            it = registry.erase(it);
+            continue;
+        }
+        const ShaderRecipe& recipe = it->second;
+        rhi::ProgramDesc desc;
+        if (!BuildShaderRecipeDesc(recipe, desc)) {
+            ++report.kept;
+            log << "[Shaders] kept " << recipe.name << ": a source file is missing or empty\n";
+        }
+        else if (rhi::Gpu().ReloadProgram(handle, desc)) {
+            ++report.reloaded;
+            log << "[Shaders] reloaded " << recipe.name << "\n";
+        }
+        else {
+            ++report.kept;
+            log << "[Shaders] kept previous " << recipe.name << " (compile or link failed, see the errors above)\n";
+        }
+        ++it;
+    }
+    log << "[Shaders] reload: " << report.reloaded << " reloaded, " << report.kept << " kept, "
+        << report.stale << " stale\n";
+    return report;
 }

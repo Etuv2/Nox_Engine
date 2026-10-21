@@ -2,6 +2,7 @@
 #pragma once
 #include "SceneNode.h"
 #include "AudioPlayer.h"
+#include "audio/AudioSpatial.h"
 #include <glm/glm.hpp>
 #include <string>
 #include <SDL/SDL_mixer.h>
@@ -41,6 +42,21 @@ public:
     // Mixer bus the source plays through (AudioMixer). Defaults to "sfx"; an empty name resets to the default.
     const std::string& getBus() const { return m_bus; }
     void setBus(const std::string& bus);
+
+    // Distance attenuation. hearing_distance is the maximum distance (silent at and beyond it). The default curve is
+    // the original linear falloff, which keeps existing sources sounding as they always did. minDistance is the
+    // distance inside which the source is at full volume (Inverse: the reference distance).
+    AudioAttenuation getAttenuation() const { return m_attenuation; }
+    void setAttenuation(AudioAttenuation curve) { m_attenuation = curve; }
+    float getMinDistance() const { return m_minDistance; }
+    void setMinDistance(float d);
+    float getRolloff() const { return m_rolloff; }
+    void setRolloff(float r);
+    // Occlusion: when a wall blocks the line from listener to source, the source is attenuated (AudioSpatial.h).
+    bool getOcclusion() const { return m_occlusion; }
+    void setOcclusion(bool on) { m_occlusion = on; }
+    // Curve parameters for this source (maximum distance = hearing distance).
+    AudioSpatialParams spatialParams() const;
     // Volume the channel is mixed at: source volume * bus gain (AudioMixer::BusGain).
     float outputGain() const;
     bool isPlaying() const { return m_isPlaying; }
@@ -82,6 +98,12 @@ private:
     float m_volume;          // Volume multiplier (0.0 to 1.0)
     float m_hearingDistance; // Maximum hearing distance for attenuation
     std::string m_bus = "sfx"; // AudioMixer bus name
+
+    AudioAttenuation m_attenuation = AudioAttenuation::Linear;
+    float m_minDistance = 0.0f;
+    float m_rolloff = 1.0f;
+    bool m_occlusion = false;
+    AudioOcclusionState m_occlusionState;
 
     float m_selectionRadius = 0.6f; // gizmo/picking sphere radius
     
