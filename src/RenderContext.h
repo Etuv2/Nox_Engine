@@ -199,6 +199,9 @@ struct RenderContext {
 	bool surfelGITLASDisplayMultipleBVHLayers = false;
 	int surfelGITLASBVHLayerToDisplay = 0;
 	int lightingCompositeDebugMode = 0; // 0 full, 1 direct, 2 IBL, 3 SSGI, 4 surfel, 5 LPV
+	// Scales the GI-only debug outputs (composite debug 3/4/5, surfel fullscreen views) before tone mapping, so
+	// walls are not clipped in captures. 1 = as computed. NOX_SURFEL_GI_DEBUG_EXPOSURE.
+	float lightingGIDebugExposure = 1.0f;
 
 
 	// Bloom settings

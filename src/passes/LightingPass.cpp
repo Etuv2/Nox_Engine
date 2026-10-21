@@ -120,6 +120,7 @@ void LightingPass::CacheUniformLocations() {
 	m_uniforms.indirectDiffuseCompositeMode = gpu.GetUniformLocation(m_shader, "indirectDiffuseCompositeMode");
 	m_uniforms.lightingOutputMode = gpu.GetUniformLocation(m_shader, "lightingOutputMode");
 	m_uniforms.lightingCompositeDebugMode = gpu.GetUniformLocation(m_shader, "uLightingCompositeDebugMode");
+	m_uniforms.lightingGIDebugExposure = gpu.GetUniformLocation(m_shader, "uLightingGIDebugExposure");
 
 	// Light uniforms
 	m_uniforms.numLights = gpu.GetUniformLocation(m_shader, "numLights");
@@ -383,6 +384,9 @@ void LightingPass::Execute(RenderContext& ctx,
 
 	if (m_uniforms.lightingCompositeDebugMode >= 0) {
 		gpu.SetUniform(m_uniforms.lightingCompositeDebugMode, std::clamp(ctx.lightingCompositeDebugMode, 0, 5));
+	}
+	if (m_uniforms.lightingGIDebugExposure >= 0) {
+		gpu.SetUniform(m_uniforms.lightingGIDebugExposure, std::max(ctx.lightingGIDebugExposure, 0.0f));
 	}
 
 	// Clustered light lists and exposure state (docs/nfs2015 M2/M3).

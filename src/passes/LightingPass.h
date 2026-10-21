@@ -97,6 +97,7 @@ private:
 		rhi::UniformLocation indirectDiffuseCompositeMode = -1;
 		rhi::UniformLocation lightingOutputMode = -1;
 		rhi::UniformLocation lightingCompositeDebugMode = -1;
+		rhi::UniformLocation lightingGIDebugExposure = -1;
 
 		// Light uniforms
 		rhi::UniformLocation numLights = -1;

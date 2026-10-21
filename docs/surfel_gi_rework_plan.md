@@ -2442,3 +2442,49 @@ Worker S3 (Haiku 5.5), on the S2 merge (`e480d8a`). Goal: cut the surfel GI cost
 - Cache support spread versus insertion radius; then a compact kernel and own-cell lookup as one experiment, with energy and noise per scene.
 - `coverage_spawn` (0.27 ms, every third frame) and `irradiance_sharing` (0.15 ms): candidates for merging or cheaper sampling.
 - Final quiet-GPU timings for each tier were not taken in this round.
+
+## 24. Final image quality
+
+Worker S4 (Haiku 5.5), on `worktree-agent-a29f751d752bc824f` (commits 23d25fd to 6121d57, merged with main at 663e576). Method: moving objects and Cornell validation at frame 240, GI-only at exposure 0.25 (`NOX_SURFEL_GI_DEBUG_EXPOSURE`), NFS night street and scene.json for energy and noise. Shared GPU, so timings are indicative.
+
+### 24.1 Root cause of the cell tiles
+
+Every grid reader clamped the stored cell count to `uMaxSurfelsPerCell` (64 at Medium): `storedCount = min(header.entryCount, uMaxSurfelsPerCell)`. Nothing caps the per-cell storage at 64, and real lists are hundreds long because a surfel with support radius 0.72 cell is inserted into about 8 cells. Each cell was therefore read through an arbitrary subset (the first 64 in insertion order), different from its neighbour's, which gives straight cell-boundary steps. The subset also changed between runs, which is why the steps moved. Found by the lead with the constant-irradiance and cap-removed panels (`C:\Users\desti\AppData\Local\Temp\lead_bis\sheet3.png`). Earlier S4 elimination (the cell term, examine and accept bounds, grid overflow) did not see it because those tests did not touch the clamp.
+
+### 24.2 What changed (default on, each behind a setting)
+
+- `gatherFullCellLists` (`NOX_SURFEL_GI_FULL_CELL_LISTS=0` restores the cap). The five `uMaxSurfelsPerCell` upload sites in `SurfelGIPipeline.cpp` pass the full list. The insertion side does not use the uniform, so storage is unchanged. `trace_rays.comp` is not edited: it reads the same uniform through its three `min(header.entryCount, uMaxSurfelsPerCell)` lines, so it follows the setting. S3 should know that its cache reads now see full lists.
+- Long lists in the final gather are sampled with a stratified stride: sample j from stratum j of k, jitter hashed per pixel and not per frame (`AccumulateCellSampled` in `apply_indirect.comp`). Static content gives the same subset each frame, and the upscale history averages it.
+- `gatherNormalisedBlend` (`NOX_SURFEL_GI_NORMALISED_BLEND=0` restores the section 18 sum). Covered part `min(sum w, 1)` takes the surfel mean `sum(wE)/sum(w ramp)`, and the cell average fills the rest. The section 18 form divides by `max(1, sum ramp)`, which darkens a constant field wherever the ramp sum is below 1 (ramp floor 0.25).
+- Validation `NOX_SURFEL_GI_CONST_TEST=v`: stored and cell irradiance forced to `v`. In debug view 38 the moving-scene wall reads std 0 (flat).
+
+### 24.3 Energy and noise (`off`, `surf`, `surf_term`, `indep`; frames 200 to 220)
+
+| Scene | Variant | surf_term mean | Energy vs old | Noise rel |
+|---|---|---|---|---|
+| NFS (3 repeats) | old (cap, section 18 sum) | 0.04506 | | 0.86% |
+| NFS (3 repeats) | new (full lists, blend) | 0.04768 | +5.8% | 0.99% |
+| Cornell (1 run) | old | 0.7494 | | 0.26% |
+| Cornell (1 run) | new | 0.6996 | -6.6% | 0.28% |
+| scene.json (1 run) | new | 0.2225 | | 0.47% |
+
+The old scene.json run did not produce a result, so it has no comparison. The Cornell drop breaks the -3% energy criterion. I did not separate the two causes (full lists and normalisation) within this session, so the attribution is open. Noise is inside +20% on NFS and Cornell.
+
+### 24.4 Cost (NFS, six surfel runs, subpass logs)
+
+- Final gather: 0.855 ms (old) and 0.884 ms (new). Upscale: 0.243 and 0.244 ms.
+- Gather plus upscale is about 1.13 ms against the 0.6 ms target. Not met. The stratified sampling did not reduce the cost, and the shared-memory cell lists and fp16 packing were not built.
+- List length: mean and p99 entries per cell were not measured (no counter added). This is the first thing to add next, together with an insertion-radius experiment (surfel-spacing radius instead of 0.72 cell) to shorten lists.
+
+### 24.5 Other items
+
+- `coverage.comp` does not evaluate a distance kernel: it projects surfels into tiles with depth and normal validation. The exponential kernel the lead cited is in `spawn.comp` (line 361) and in the `SurfelCoverageWeight` and `SurfelCoverageWeightAt` helpers of `common.glsl`. The helpers are used by no pass in this tree; `spawn.comp` duplicates the expression. Those files are S3's, so nothing was changed.
+- Residual grain: the constant-irradiance panel is flat, but the fixed GI-only frame still shows fine speckle on the ceiling and walls. That is the stratified subset, averaged only through the upscale history.
+- The metrics runs end with an access violation in static destructors at exit (exit code 3221225477, `execute_onexit_table`). Not investigated here.
+
+### 24.6 Not done
+
+- Energy criterion on Cornell (-6.6%): attribution between full lists and normalisation is open.
+- List-length statistics and the cost target (0.6 ms).
+- Insertion radius and grid resolution experiments (plan 24 item 2).
+- Repeat runs of the energy batch for scene.json (no old variant).

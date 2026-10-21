@@ -32,6 +32,8 @@ uniform mat4 uProjection;
 uniform uint uMaxSurfels;
 uniform uint uMaxRays;
 uniform uint uDebugView;
+// Scale of the stored-irradiance splat view before tone mapping (NOX_SURFEL_GI_DEBUG_EXPOSURE).
+uniform float uDebugExposure = 1.0;
 uniform uvec3 uGridResolution;
 uniform vec3 uGridMin;
 uniform vec3 uGridMax;
@@ -413,7 +415,7 @@ vec4 DebugColor(uint surfelID, Surfel surfel, bool alive, bool recycleMarker)
     } else if (uDebugView == DEBUG_RADIAL_DEPTH) {
         color = RadialDepthColor(surfelID, surfel, ring);
     } else if (uDebugView == DEBUG_INDIRECT_ONLY) {
-        color = max(TonemapDebug(surfel.irradiance.rgb), vec3(0.02));
+        color = max(TonemapDebug(surfel.irradiance.rgb * uDebugExposure), vec3(0.02));
     } else if (uDebugView == DEBUG_RECYCLE_SCORE) {
         color = RecycleScoreColor(surfel, ring);
     } else if (uDebugView == DEBUG_STALE_SURFELS) {

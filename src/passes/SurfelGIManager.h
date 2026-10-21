@@ -65,6 +65,8 @@ struct SurfelGISettings {
 	bool enabled = false;
 	SurfelGIQualityTier qualityTier = SurfelGIQualityTier::Medium;
 	SurfelGIDebugView debugView = SurfelGIDebugView::Off;
+	// Scale of the fullscreen GI debug views before tone mapping. Capture only (NOX_SURFEL_GI_DEBUG_EXPOSURE).
+	float debugExposure = 1.0f;
 
 	uint32_t maxSurfels = 65536u;
 	// Rays traced per frame; shared out by demand when requests exceed it (allocate_rays.comp).
@@ -197,6 +199,21 @@ struct SurfelGISettings {
 	// Cell-average fallback interpolated from the 8 corner cells of the receiver's position (true) or the base cell's
 	// constant (false, the GIBS form). Plan section 21.
 	bool gatherSmoothFallback = true;
+	// Edge-aware resolve of the half-resolution gather (plan section 24): plane-distance and normal weights,
+	// empty gather texels excluded, neighbourhood estimate when all 2x2 taps are empty. false = section 18 resolve.
+	bool gatherEdgeAwareUpsample = true;
+	// Temporal history rejection at disocclusions (reset) and depth edges (half history), plan section 24.
+	bool gatherTemporalRejection = true;
+	// Compact gather kernel with the surfel's insertion support: own cell only, hashed start for long cells (plan
+	// section 24). false = the section 18 to 21 gather (Gaussian kernel, 3x3x3 neighbour walk, first N in cell order).
+	bool gatherCompactKernel = true;
+	// Readers walk the real cell list (not the first maxSurfelsPerCell entries, which is an arbitrary subset per cell
+	// and produced the cell tiles, plan section 24). false = the old cap, for A/B.
+	bool gatherFullCellLists = true;
+	// Normalised gather blend: sum(wE)/sum(w) for the covered part, cell average for the rest (plan section 24).
+	bool gatherNormalisedBlend = true;
+	// Validation only: > 0 replaces every stored and cell irradiance with this constant (the gather must be flat).
+	float constantIrradianceTest = 0.0f;
 	// Stochastic per-cell gather (plan section 21, round 2): samples per cell in the window, hashed start per pixel and frame.
 	bool gatherStochastic = false;
 	uint32_t gatherPerCellSamples = 2u;

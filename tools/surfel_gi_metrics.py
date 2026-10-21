@@ -66,6 +66,8 @@ BASE_ENV = {
     "NOX_LOG_PASS_METRICS_INTERVAL": "1",
     "NOX_SURFEL_GI_LOG_SUBPASS_METRICS_INTERVAL": "1",
     "NOX_EXPOSURE_MODE": "manual",
+    # Scene fully loaded before frame 0 (async loading would count loading-overlay frames in the windows).
+    "NOX_SYNC_LOAD": "1",
 }
 SURF_ENV = {"NOX_ENABLE_SURFEL_GI": "1", "NOX_SSGI": "0"}
 REF_ENV = {
