@@ -684,6 +684,10 @@ void ModularRenderer::SyncSurfelGISettings()
 			GetEnvVarFloat("NOX_SURFEL_GI_FALLBACK_STRENGTH", settings.cellAverageFallbackStrength),
 			0.0f,
 			1.0f);
+		// Gather experiments (plan section 21): kernel cutoff in base cells, and the interpolated cell-average fallback.
+		settings.gatherCutoffCells = std::clamp(
+			GetEnvVarFloat("NOX_SURFEL_GI_GATHER_CUTOFF", settings.gatherCutoffCells), 0.0f, 4.0f);
+		applyEnvToggle("NOX_SURFEL_GI_GATHER_SMOOTH_FALLBACK", settings.gatherSmoothFallback);
 		applyEnvToggle("NOX_SURFEL_GI_SCREEN_TRACE", settings.useScreenSpaceTrace);
 		applyEnvToggle("NOX_SURFEL_GI_BVH_TRACE", settings.useSoftwareBVHTrace);
 		applyEnvToggle("NOX_SURFEL_GI_SURFEL_FALLBACK_TRACE", settings.useSurfelFallbackTrace);
@@ -764,6 +768,13 @@ void ModularRenderer::SyncSurfelGISettings()
 	// Validation overrides, applied after the tier caps so they can exceed them.
 	if (const char* scaleEnv = std::getenv("NOX_SURFEL_GI_FINAL_GATHER_SCALE")) {
 		settings.finalGatherResolutionScale = std::clamp(static_cast<float>(std::atof(scaleEnv)), 0.25f, 1.0f);
+	}
+	// Accepted surfels per gather texel (N of GIBS p.40). The examined bound follows at 2N unless the
+	// candidates override is also set. Validation only: this is the cell-order truncation test (plan section 21).
+	const std::string acceptedEnv = GetEnvVarString("NOX_SURFEL_GI_GATHER_ACCEPTED");
+	if (!acceptedEnv.empty()) {
+		settings.maxGatherSurfelsPerPixel = static_cast<uint32_t>(std::clamp(std::atoi(acceptedEnv.c_str()), 1, 2048));
+		settings.maxGatherCandidatesPerPixel = 2u * settings.maxGatherSurfelsPerPixel;
 	}
 	if (const char* candidatesEnv = std::getenv("NOX_SURFEL_GI_GATHER_CANDIDATES")) {
 		settings.maxGatherCandidatesPerPixel = static_cast<uint32_t>(std::clamp(std::atoi(candidatesEnv), 1, 1024));

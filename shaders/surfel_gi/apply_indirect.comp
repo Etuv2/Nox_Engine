@@ -77,6 +77,9 @@ uniform int uUseRadialDepth = 1;
 uniform float uRadialDepthMinVariance = 1e-4;
 // Strength of the cell-average term (GIBS p.40 uses 1).
 uniform float uFallbackStrength = 1.0;
+// Gather kernel cutoff in base-cell sizes (0 = off), and the interpolated cell-average fallback (plan section 21).
+uniform float uGatherCutoffCells = 0.0;
+uniform int uGatherSmoothFallback = 0;
 uniform uint uFrameIndex = 0u;
 uniform uint uDebugView = 0u;
 uniform uint uSpawnTileSize = 8u;
@@ -101,6 +104,9 @@ const uint DEBUG_RAW_INDIRECT_IRRADIANCE = 35u;
 const uint DEBUG_FINAL_GATHER_FALLBACK = 36u;
 const uint DEBUG_FINAL_GATHER_BLEED = 37u;
 const uint DEBUG_FINAL_GATHER_COMPOSITE = 38u;
+
+// Cutoff radius of the gather kernel for this receiver (set in main from its base cell size). 0 = no cutoff.
+float gGatherCutoffRadius = 0.0;
 
 bool SurfelMaterialAllowsDiffuseGI(uint materialID)
 {
@@ -131,6 +137,15 @@ float ReceiverSurfelGatherWeight(vec3 receiverPos, vec3 receiverNormal, Surfel s
                               max(maxCellSize * SURFEL_GATHER_MIN_SUPPORT_FRACTION, SURFEL_GATHER_MIN_SUPPORT_WORLD));
     float normalizedDistance = dist / max(supportRadius, 1e-4);
     float distanceWeight = exp(-normalizedDistance * normalizedDistance * 0.85);
+    if (gGatherCutoffRadius > 0.0) {
+        // Compact kernel: zero at the cutoff, C1 at it. Surfels beyond it leave the window smoothly.
+        float cutX = dist / gGatherCutoffRadius;
+        if (cutX >= 1.0) {
+            return 0.0;
+        }
+        float taper = 1.0 - cutX * cutX;
+        distanceWeight *= taper * taper;
+    }
     if (distanceWeight <= 1e-5) {
         return 0.0;
     }
@@ -261,6 +276,41 @@ vec3 SampleCellAverage(uint cell, out float confidence)
     }
 
     return SurfelCellAverage(gridCellSums[cell], confidence);
+}
+
+// Cell average interpolated over the 8 cells whose centres bracket the receiver (trilinear in the base cell). A
+// cell with no valid average contributes zero. The base cell's constant is a step at every cell border; this is
+// continuous across them (plan section 21).
+vec3 SmoothCellAverage(vec3 worldPos, SurfelGridAddress base, out float confidence)
+{
+    confidence = 0.0;
+    float cs = max(base.cellSize, 1e-4);
+    vec3 u = (worldPos - base.center) / cs;
+    vec3 au = clamp(abs(u), vec3(0.0), vec3(0.5));
+    vec3 dir = vec3(u.x >= 0.0 ? 1.0 : -1.0, u.y >= 0.0 ? 1.0 : -1.0, u.z >= 0.0 ? 1.0 : -1.0);
+    vec3 sum = vec3(0.0);
+    float totalWeight = 0.0;
+    float confSum = 0.0;
+    for (int k = 0; k < 8; ++k) {
+        vec3 sel = vec3(float(k & 1), float((k >> 1) & 1), float((k >> 2) & 1));
+        vec3 axisWeight = mix(vec3(1.0) - au, au, sel);
+        float w = axisWeight.x * axisWeight.y * axisWeight.z;
+        totalWeight += w;
+        SurfelGridAddress corner;
+        if (!SurfelWorldToGridAddress(base.center + sel * dir * cs, uGridMin, uGridMax, uGridResolution,
+                                      uUseNonLinearGrid, uGridFarExtent, corner)) {
+            continue;
+        }
+        float cornerConfidence;
+        vec3 average = SampleCellAverage(corner.cell, cornerConfidence);
+        sum += average * w;
+        confSum += cornerConfidence * w;
+    }
+    if (totalWeight <= 1e-6) {
+        return vec3(0.0);
+    }
+    confidence = confSum / totalWeight;
+    return sum / totalWeight;
 }
 
 // Young surfels converge slowly: their irradiance is a few rays old, so at full weight they add
@@ -438,6 +488,7 @@ void main()
         : (neighborRadius == 1u ? SURFEL_APPLY_GATHER_CELLS_RADIUS_1 : SURFEL_APPLY_GATHER_CELLS_RADIUS_2);
     uint acceptedCount = 0u;
     uint examinedCount = 0u;
+    gGatherCutoffRadius = uGatherCutoffCells > 0.0 ? uGatherCutoffCells * baseAddress.cellSize : 0.0;
 
     for (uint i = 0u; i < gatherCellCount; ++i) {
         if (acceptedCount >= maxAccepted || examinedCount >= maxExamined) {
@@ -475,7 +526,9 @@ void main()
     imageStore(uOutCoverage, pixel, vec4(coverage, 0.0, 0.0, 1.0));
 
     float cellConfidence;
-    vec3 cellIrradiance = SampleCellAverage(baseAddress.cell, cellConfidence);
+    vec3 cellIrradiance = uGatherSmoothFallback != 0
+        ? SmoothCellAverage(worldPos, baseAddress, cellConfidence)
+        : SampleCellAverage(baseAddress.cell, cellConfidence);
     float cellShare = clamp(uFallbackStrength, 0.0, 1.0) * max(0.0, 1.0 - sumWeight);
     // Where the weights sum to less than 1 this is the GIBS sum. Above 1 the sum is divided by the total
     // (ramped) weight, so dense texels take an average and do not over-brighten (the literal sum gave
