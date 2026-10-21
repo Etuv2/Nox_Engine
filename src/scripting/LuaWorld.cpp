@@ -2,6 +2,7 @@
 #include "LuaWorld.h"
 #include "LuaComponents.h"
 #include "LuaPhysics.h"
+#include "LuaAnimation.h"
 #include "LuaAudio.h"
 #include "LuaDebug.h"
 #include "LuaInputBindings.h"
@@ -1487,6 +1488,7 @@ namespace NoxLua {
 		RunCoroutines();
 		RunSystems(false, dt);
 		PumpPhysicsEvents(*this);
+		PumpAnimationEvents(*this);
 		DeliverEvents();
 		RunBehaviors(dt);
 		SweepDead();

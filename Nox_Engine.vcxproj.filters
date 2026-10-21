@@ -366,6 +366,12 @@
     <ClCompile Include="src\Animation.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="src\AnimationPose.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\AnimatorRuntime.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="src\AnimationController.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -927,6 +933,9 @@
     <ClCompile Include="src\scripting\LuaPhysics.cpp">
       <Filter>Source Files\scripting</Filter>
     </ClCompile>
+    <ClCompile Include="src\scripting\LuaAnimation.cpp">
+      <Filter>Source Files\scripting</Filter>
+    </ClCompile>
     <ClCompile Include="src\scripting\LuaRender.cpp">
       <Filter>Source Files\scripting</Filter>
     </ClCompile>
@@ -1035,6 +1044,9 @@
     <ClInclude Include="src\scripting\LuaPhysics.h">
       <Filter>Header Files\scripting</Filter>
     </ClInclude>
+    <ClInclude Include="src\scripting\LuaAnimation.h">
+      <Filter>Header Files\scripting</Filter>
+    </ClInclude>
     <ClInclude Include="src\scripting\LuaRender.h">
       <Filter>Header Files\scripting</Filter>
     </ClInclude>
@@ -1050,6 +1062,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\AnimationSystem.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\AnimationPose.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\AnimatorRuntime.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\app\ProjectBootstrap.h">

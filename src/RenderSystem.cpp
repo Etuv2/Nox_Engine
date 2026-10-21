@@ -1,6 +1,7 @@
 #include "RenderSystem.h"
 #include "Scene.h"
 #include "SceneNode.h"
+#include "AnimatorRuntime.h"
 #include "MeshComponent.h"
 #include "DefaultTextures.h"
 #include "TextureUnits.h"
@@ -123,6 +124,11 @@ namespace {
 
 	glm::mat4 ResolveAnimatedNodeLocalTransform(const Scene& model, int nodeIndex, const AnimationComponent* animation)
 	{
+		// The Animator state machine's pose (AnimatorRuntime) wins while it has one.
+		if (animation && animation->animator && animation->animator->HasPose()) {
+			return animation->animator->LocalMatrix(nodeIndex);
+		}
+
 		if (nodeIndex < 0 || nodeIndex >= static_cast<int>(model.nodes.size())) {
 			return glm::mat4(1.0f);
 		}
