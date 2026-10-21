@@ -1,3 +1,4 @@
+#include "SliceTask.h"
 #include "RoadNetwork.h"
 #include "assets/AssetIOJson.h"
 
@@ -73,6 +74,7 @@ bool RoadNetwork::LoadInline(const json& j)
 	if (j.contains("nodes") && j["nodes"].is_array()) {
 		m_nodes.reserve(j["nodes"].size());
 		for (const json& n : j["nodes"]) {
+			SliceTask::YieldIfOverBudget();  // slice point: a city network has tens of thousands of nodes
 			if (!n.is_object()) continue;
 			Node node;
 			node.id = n.value("id", std::string("N") + std::to_string(m_nodes.size()));
@@ -92,6 +94,7 @@ bool RoadNetwork::LoadInline(const json& j)
 	if (j.contains("edges") && j["edges"].is_array()) {
 		m_edges.reserve(j["edges"].size());
 		for (const json& e : j["edges"]) {
+			SliceTask::YieldIfOverBudget();  // slice point
 			Edge edge;
 			edge.halfWidth = m_roadHalfWidth;
 			std::string a, b;
@@ -181,6 +184,7 @@ void RoadNetwork::BuildIndex()
 	for (const Edge& e : m_edges) m_maxHalfWidth = std::max(m_maxHalfWidth, e.halfWidth);
 	if (m_edges.size() < kIndexThreshold) return;
 	for (size_t i = 0; i < m_edges.size(); ++i) {
+		SliceTask::YieldIfOverBudget();  // slice point
 		const glm::vec2 a = m_nodes[m_edges[i].a].pos, b = m_nodes[m_edges[i].b].pos;
 		const glm::vec2 mn = glm::min(a, b), mx = glm::max(a, b);
 		const int x0 = static_cast<int>(std::floor(mn.x / m_cell)), x1 = static_cast<int>(std::floor(mx.x / m_cell));

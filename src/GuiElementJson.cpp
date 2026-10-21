@@ -61,6 +61,20 @@ void ReadLayout(const json& el, GuiNode::GuiElement& e) {
 	}
 }
 
+void ReadInteraction(const json& el, GuiNode::GuiElement& e) {
+	e.visible = el.value("visible", true);
+	e.interactive = el.value("interactive", false);
+	e.id = el.value("id", std::string());
+	e.onClick = el.value("on_click", std::string());
+}
+
+void WriteInteraction(json& out, const GuiNode::GuiElement& e) {
+	if (!e.visible) out["visible"] = false;
+	if (e.interactive) out["interactive"] = true;
+	if (!e.id.empty()) out["id"] = e.id;
+	if (!e.onClick.empty()) out["on_click"] = e.onClick;
+}
+
 void WriteLayout(json& out, const GuiNode::GuiElement& e) {
 	if (e.isResizable) {
 		out["resizable"] = true;
@@ -164,6 +178,7 @@ bool GuiElementFromJson(const json& el, GuiNode::GuiElement& out, std::string* k
 	}
 
 	ReadLayout(el, out);
+	ReadInteraction(el, out);
 	return true;
 }
 
@@ -232,6 +247,7 @@ json GuiElementToJson(const GuiNode::GuiElement& e) {
 	}
 	}
 	WriteLayout(out, e);
+	WriteInteraction(out, e);
 	// Relative layout is resolved against the screen every frame (GuiNode::RefreshElementPositions), so the derived
 	// geometry is not part of the file: writing it would make a save depend on the window size.
 	if (e.useRelativePositioning) {

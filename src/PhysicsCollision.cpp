@@ -1,6 +1,7 @@
 #include "PhysicsCollision.h"
 #include "RigidBody.h"
 #include "Contact.h"
+#include "physics/MeshCollider.h"
 #include <glm/gtc/matrix_transform.hpp>
 #include <algorithm>
 #include <array>
@@ -43,10 +44,6 @@ struct EPAResult {
     glm::vec3 witnessA{0.0f};
     glm::vec3 witnessB{0.0f};
 };
-
-bool HasConvexSupport(RigidBody::ShapeType shapeType) {
-    return shapeType == RigidBody::ShapeType::BOX || shapeType == RigidBody::ShapeType::SPHERE;
-}
 
 glm::vec3 SupportPointForBody(const std::shared_ptr<RigidBody>& body, const glm::vec3& direction) {
     if (!body) {
@@ -499,17 +496,128 @@ bool UpdateSimplex(std::vector<SupportVertex>& simplex, glm::vec3& direction) {
     return false;
 }
 
-bool ConvexOverlapGJK(const std::shared_ptr<RigidBody>& bodyA,
-                      const std::shared_ptr<RigidBody>& bodyB) {
-    return RunGJK(bodyA, bodyB).intersecting;
+// ============== CAPSULE AND MESH PAIRS ==============
+// A capsule is the union of sample spheres along its axis, and a mesh is a set of triangles. Pairs with either are
+// built from the existing sphere builders: each capsule sample becomes a temporary sphere (same material), and the
+// results are merged into one manifold on the real bodies. Mesh pairs use the per-triangle sphere contacts.
+// Box against mesh is not supported (no contacts).
+
+// Temporary sphere standing in for one sample of a capsule body.
+std::shared_ptr<RigidBody> MakeSampleSphere(const RigidBody& capsule, const glm::vec3& center) {
+    auto sphere = std::make_shared<RigidBody>();
+    sphere->setSphere(capsule.getRadius());
+    sphere->setPosition(center);
+    sphere->setFriction(capsule.getFriction());
+    sphere->setRestitution(capsule.getRestitution());
+    return sphere;
 }
 
-bool RequiresConvexPrepass(RigidBody::ShapeType typeA, RigidBody::ShapeType typeB) {
-    if (!HasConvexSupport(typeA) || !HasConvexSupport(typeB)) {
+// Bodies that stand in for one side of a pair: the body itself, or its capsule samples.
+std::vector<std::shared_ptr<RigidBody>> SlotsFor(const std::shared_ptr<RigidBody>& body) {
+    if (body->getShapeType() != RigidBody::ShapeType::CAPSULE) return { body };
+    glm::vec3 a, b;
+    body->getCapsuleEnds(a, b);
+    const float len = glm::length(b - a);
+    const float r = std::max(body->getRadius(), 1e-4f);
+    const int n = std::clamp(static_cast<int>(std::ceil(len / r)) + 1, 2, 8);
+    std::vector<std::shared_ptr<RigidBody>> out;
+    out.reserve(n);
+    for (int i = 0; i < n; ++i) {
+        const float t = static_cast<float>(i) / static_cast<float>(n - 1);
+        out.push_back(MakeSampleSphere(*body, glm::mix(a, b, t)));
+    }
+    return out;
+}
+
+// A contact between two slot bodies, with its own A to B normal.
+struct SlotContact {
+    ContactPoint point;
+    glm::vec3 normal{ 0.0f, 1.0f, 0.0f };
+    float friction = 0.5f;
+    float restitution = 0.3f;
+};
+
+// Contacts of one slot pair. Mesh pairs yield one contact per touched triangle; other pairs reuse TestCollision.
+void CollectSlotContacts(const std::shared_ptr<RigidBody>& slotA, const std::shared_ptr<RigidBody>& slotB,
+                         std::vector<SlotContact>& out) {
+    const auto typeA = slotA->getShapeType();
+    const auto typeB = slotB->getShapeType();
+    const float friction = CombineFriction(slotA->getFriction(), slotB->getFriction());
+    const float restitution = CombineRestitution(slotA->getRestitution(), slotB->getRestitution());
+    if (typeA == RigidBody::ShapeType::MESH || typeB == RigidBody::ShapeType::MESH) {
+        const bool meshIsA = typeA == RigidBody::ShapeType::MESH;
+        const auto& mesh = meshIsA ? slotA : slotB;
+        const auto& sphere = meshIsA ? slotB : slotA;
+        std::vector<CollisionWorld::SphereContact> contacts;
+        MeshCollider::SphereContacts(*mesh, sphere->getPosition(), sphere->getRadius(), 0.005f, contacts);
+        // The contact normal points from the mesh to the sphere. A to B is that direction when the mesh is A.
+        const float sign = meshIsA ? 1.0f : -1.0f;
+        for (const auto& c : contacts) {
+            SlotContact sc;
+            sc.point = ContactPoint(c.point, c.depth);
+            sc.normal = c.normal * sign;
+            sc.friction = friction;
+            sc.restitution = restitution;
+            out.push_back(sc);
+        }
+        return;
+    }
+    ContactManifold m;
+    if (!PhysicsCollision::TestCollision(slotA, slotB, m)) return;
+    for (int i = 0; i < m.pointCount; ++i) {
+        SlotContact sc;
+        sc.point = m.points[i];
+        sc.normal = m.normal;
+        sc.friction = m.friction;
+        sc.restitution = m.restitution;
+        out.push_back(sc);
+    }
+}
+
+// Builds the manifold for a pair with a capsule or mesh. The normal is the deepest contact's; contacts whose normal
+// departs from it by more than about 45 degrees are dropped (the solver uses one normal per manifold).
+bool TestCompound(const std::shared_ptr<RigidBody>& bodyA, const std::shared_ptr<RigidBody>& bodyB,
+                  ContactManifold& manifold) {
+    const auto typeA = bodyA->getShapeType();
+    const auto typeB = bodyB->getShapeType();
+    const bool meshA = typeA == RigidBody::ShapeType::MESH;
+    const bool meshB = typeB == RigidBody::ShapeType::MESH;
+    if (meshA && meshB) return false;
+    if ((meshA && (typeB == RigidBody::ShapeType::PLANE || typeB == RigidBody::ShapeType::BOX)) ||
+        (meshB && (typeA == RigidBody::ShapeType::PLANE || typeA == RigidBody::ShapeType::BOX))) {
         return false;
     }
 
-    return typeA == RigidBody::ShapeType::BOX || typeB == RigidBody::ShapeType::BOX;
+    std::vector<SlotContact> contacts;
+    const auto slotsA = SlotsFor(bodyA);
+    const auto slotsB = SlotsFor(bodyB);
+    for (const auto& sa : slotsA) {
+        for (const auto& sb : slotsB) {
+            CollectSlotContacts(sa, sb, contacts);
+        }
+    }
+    if (contacts.empty()) return false;
+
+    const SlotContact* deepest = &contacts[0];
+    for (const auto& c : contacts) {
+        if (c.point.penetration > deepest->point.penetration) deepest = &c;
+    }
+    const glm::vec3 normal = deepest->normal;
+    manifold.bodyA = bodyA;
+    manifold.bodyB = bodyB;
+    manifold.normal = normal;
+    manifold.friction = deepest->friction;
+    manifold.restitution = deepest->restitution;
+    manifold.pointCount = 0;
+    for (const auto& c : contacts) {
+        if (glm::dot(c.normal, normal) < 0.7f) continue;
+        ContactPoint cp = c.point;
+        cp.localPointA = bodyA->worldToLocal(cp.point);
+        cp.localPointB = bodyB->worldToLocal(cp.point);
+        AssignFeatureId(cp);
+        manifold.addPoint(cp);
+    }
+    return manifold.pointCount > 0;
 }
 
 } // namespace
@@ -519,15 +627,17 @@ bool TestCollision(const std::shared_ptr<RigidBody>& bodyA,
                    ContactManifold& manifold) {
     if (!bodyA || !bodyB) return false;
     
+    if (bodyA->getShapeType() == RigidBody::ShapeType::CAPSULE || bodyB->getShapeType() == RigidBody::ShapeType::CAPSULE ||
+        bodyA->getShapeType() == RigidBody::ShapeType::MESH || bodyB->getShapeType() == RigidBody::ShapeType::MESH) {
+        return TestCompound(bodyA, bodyB, manifold);
+    }
+    
     auto typeA = bodyA->getShapeType();
     auto typeB = bodyB->getShapeType();
 
-    // Transitional convex path: use GJK for convex overlap testing before
-    // dispatching to the existing manifold builders. EPA/manifold generation
-    // still needs follow-up work, but this gives us a shared convex seam now.
-    if (RequiresConvexPrepass(typeA, typeB) && !ConvexOverlapGJK(bodyA, bodyB)) {
-        return false;
-    }
+    // No GJK overlap prepass here. It answered "no overlap" for resting contacts (touching within the
+    // detection threshold), so a box floor produced no contact and no contact events. The shape builders
+    // below are exact with their own thresholds and run EPA only when GJK actually intersects.
     
     // Dispatch based on shape types
     if (typeA == RigidBody::ShapeType::SPHERE) {

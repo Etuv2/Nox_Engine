@@ -36,8 +36,34 @@ public:
 	SceneLoader(std::shared_ptr<ModelManager> modelManager, std::shared_ptr<PhysicsEngine> physicsEngine, int screenW, int screenH);
 	~SceneLoader();
 
-	// Loads the scene from a JSON file and returns a shared pointer to a SceneGraph.
+	// Loads the scene from a JSON file and returns a shared pointer to a SceneGraph. Blocking: BeginLoad, then
+	// StepLoad until done, then TakeLoadedScene. Returns nullptr on failure.
 	std::shared_ptr<SceneGraph> LoadScene(const std::string& sceneFilePath);
+
+	// ---- Asynchronous loading (docs/scenes.md, "Loading") ----
+	// A load is a job advanced by StepLoad on the calling (main) thread in small steps, so the caller can keep
+	// pumping events and drawing a loading screen. File reads, JSON parsing and glTF decoding run on worker
+	// threads. The live scene is not touched until the caller takes the result with TakeLoadedScene: the
+	// previous scene stays intact while the load runs and when it fails.
+	enum class LoadStatus { Idle, Running, Ready, Failed };
+	// Starts a load. Returns false while another load is running (the caller waits or retries).
+	bool BeginLoad(const std::string& sceneFilePath);
+	// Runs steps until budgetMs has passed, or until the job waits on a worker. budgetMs < 0 runs to completion.
+	LoadStatus StepLoad(double budgetMs);
+	LoadStatus GetLoadStatus() const;
+	// Ready: returns the new graph and removes the physics bodies of the scene it replaces. Otherwise nullptr.
+	std::shared_ptr<SceneGraph> TakeLoadedScene();
+	// Cancels a running or finished-but-untaken load: removes its physics bodies and restores the physics config.
+	void CancelLoad();
+	// Message of the last failed load (also published on GuiEventBus as an error).
+	const std::string& GetLoadError() const { return m_loadError; }
+	struct LoadProgress {
+		float fraction = 0.0f;          // 0..1 over the whole load
+		std::string stage;              // what the load is doing now, e.g. "Decoding models (12/120)"
+		std::string sceneName;          // "scene_name" once the file is parsed
+		std::string sceneFile;          // logical path as requested
+	};
+	LoadProgress GetLoadProgress() const;
 
 	// Saves the current scene state back to a JSON file
 	bool SaveScene(const std::shared_ptr<SceneGraph>& sceneGraph, const std::string& sceneFilePath);
@@ -100,6 +126,17 @@ private:
 	std::shared_ptr<PhysicsEngine> m_physicsEngine;
 	int m_screenW, m_screenH;
 	ProgressCallback m_progressCallback;
+
+	// Asynchronous load state (see BeginLoad). The job's definition lives in SceneLoader.cpp.
+	struct LoadJob;
+	std::unique_ptr<LoadJob> m_job;
+	LoadStatus m_loadStatus = LoadStatus::Idle;
+	std::string m_loadError;
+	// Physics bodies registered before the running load began: the replaced scene's bodies.
+	std::vector<std::shared_ptr<RigidBody>> m_bodiesBeforeLoad;
+	bool StepLoadOnce(LoadJob& job, double budgetMs);          // one unit of work; false when it waits on a worker
+	void FailLoad(const std::string& message);
+	void RetirePhysicsBodies(bool removeReplaced);  // true: bodies of the replaced scene; false: the load's own bodies
 	std::string m_currentSceneDirectory;
 	size_t m_loadedModelCount = 0;
 	size_t m_missingCriticalAssetCount = 0;

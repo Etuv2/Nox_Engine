@@ -1,0 +1,4 @@
+{
+  "name": "Third Person 3D",
+  "description": "A character you move with WASD or the left stick and jump with Space or A. A follow camera orbits with Q/E or the right stick. Coins are spawned with ctx:instantiate and respawn with timers. A HUD shows the coin count."
+}

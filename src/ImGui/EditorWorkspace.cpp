@@ -24,6 +24,7 @@
 #include "../scripting/LuaEditorSupport.h"
 #include "../editor/InspectorUndo.h"
 #include "../scene/Prefab.h"
+#include "../app/ProjectBootstrap.h"
 #include "InspectorWidgets.h"
 #include "ContentBrowser.h"
 
@@ -469,6 +470,11 @@ void EditorWorkspace::DrawMenuBar()
 			}
 			ImGui::EndMenu();
 		}
+		// Projects need the source checkout (templates/ and projects/ are read from it), not a packaged build.
+		const bool haveCheckout = !ProjectBootstrap::Info().sourceRoot.empty();
+		if (ImGui::MenuItem("New Project...", nullptr, false, haveCheckout && !m_core.IsPlaying())) m_openNewProject = true;
+		if (ImGui::MenuItem("Open Project...", nullptr, false, haveCheckout && !m_core.IsPlaying())) m_openOpenProject = true;
+		ImGui::Separator();
 		if (ImGui::MenuItem("Save Scene", "Ctrl+S", false, !m_core.IsPlaying())) {
 			m_core.SaveCurrentScene();
 			ui::Toast("Scene saved", ui::ToastKind::Success);
@@ -545,7 +551,7 @@ void EditorWorkspace::DrawMenuBar()
 		const bool busy = m_runner->IsRunning();
 		if (ImGui::MenuItem("Build Release", nullptr, false, !busy)) StartTool("Build", "tools/Build.ps1", "-Configuration Release");
 		if (ImGui::MenuItem("Run Standalone", nullptr, false, true)) RunStandalone();
-		if (ImGui::MenuItem("Package", nullptr, false, !busy)) StartTool("Package", "tools/Package.ps1", "-Configuration Release");
+		if (ImGui::MenuItem("Package", nullptr, false, !busy)) StartPackage();
 		if (ImGui::MenuItem("Cancel", nullptr, false, busy)) m_runner->Cancel();
 		ImGui::Separator();
 		ImGui::MenuItem(kWinPresets, nullptr, &m_showPresets);
@@ -620,7 +626,7 @@ void EditorWorkspace::DrawToolbar()
 	ImGui::SameLine();
 	if (ui::Tool("##run", solace::Icon::Run, "Run", false, true, "Run Standalone with the selected launch preset")) RunStandalone();
 	ImGui::SameLine();
-	if (ui::Tool("##package", solace::Icon::Package, "Package", false, !busy, "Package a self-contained build (tools/Package.ps1)")) StartTool("Package", "tools/Package.ps1", "-Configuration Release");
+	if (ui::Tool("##package", solace::Icon::Package, "Package", false, !busy, "Package a self-contained build (tools/Package.ps1)")) StartPackage();
 	ImGui::End();
 }
 
@@ -2258,10 +2264,131 @@ void EditorWorkspace::RunStandalone()
 #endif
 	if (exe.empty()) exe = "Nox_Engine.exe";
 	if (m_core.IsDirty()) ui::Toast("Standalone uses the saved scene - save to include edits", ui::ToastKind::Warning);
-	const std::string cmd = "\"" + exe + "\" --preset " + m_selectedPreset + " --game";
+	std::string cmd = "\"" + exe + "\" --preset " + m_selectedPreset + " --game";
+	// A scene under projects/ belongs to that project, so run that scene (the preset's scene is an engine scene).
+	const std::string scene = m_core.GetCurrentScenePath();
+	if (scene.rfind("projects/", 0) == 0) cmd += " --scene \"" + scene + "\"";
 	if (ProcessRunner::LaunchDetached(cmd, fs::current_path().string())) ui::Toast("Launched standalone (" + m_selectedPreset + ")", ui::ToastKind::Success);
 	else ui::Toast("Could not launch " + exe, ui::ToastKind::Error);
 	(void)exePath;
+}
+
+void EditorWorkspace::StartPackage()
+{
+	// A project packages with its own profile (packaging/<name>.json, written by File > New Project). With no
+	// project active the default profile (nox-racing) stays, as before.
+	std::string args = "-Configuration Release";
+	const std::string project = m_core.GetGameProject();
+	if (!project.empty()) {
+		const fs::path root = ProjectBootstrap::Info().sourceRoot.empty() ? fs::current_path() : ProjectBootstrap::Info().sourceRoot;
+		const std::string profile = ProjectTemplates::FindProfileForProject(root, project);
+		if (profile.empty()) {
+			ui::Toast("The active project has no packaging profile (packaging/<name>.json)", ui::ToastKind::Warning);
+			return;
+		}
+		args += " -Profile " + ProjectTemplates::ProfileNameFor(profile);
+	}
+	StartTool("Package", "tools/Package.ps1", args);
+}
+
+void EditorWorkspace::DrawNewProjectModal()
+{
+	const fs::path root = ProjectBootstrap::Info().sourceRoot;
+	if (m_openNewProject) {
+		m_newProjectTemplates = ProjectTemplates::List(root);
+		m_newProjectTemplate = 0;
+		m_newProjectOverwrite = false;
+		m_newProjectError.clear();
+		m_newProjectLocation[0] = '\0';
+		ImGui::OpenPopup("New Project");
+		m_openNewProject = false;
+	}
+	if (!ImGui::BeginPopupModal("New Project", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
+
+	ImGui::TextUnformatted("Name");
+	ImGui::SetNextItemWidth(320.0f);
+	if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
+	ImGui::InputText("##newprojectname", m_newProjectName, sizeof(m_newProjectName));
+	const std::string defaultLocation = std::string("projects/") + m_newProjectName;
+	ImGui::TextUnformatted("Location");
+	ImGui::SetNextItemWidth(320.0f);
+	ImGui::InputTextWithHint("##newprojectlocation", defaultLocation.c_str(), m_newProjectLocation, sizeof(m_newProjectLocation));
+	ImGui::TextDisabled("A folder directly under projects/ of this checkout. Empty uses %s.", defaultLocation.c_str());
+
+	ImGui::TextUnformatted("Template");
+	const bool haveTemplates = !m_newProjectTemplates.empty();
+	const char* current = haveTemplates ? m_newProjectTemplates[m_newProjectTemplate].name.c_str() : "(none found)";
+	ImGui::SetNextItemWidth(320.0f);
+	if (ImGui::BeginCombo("##newprojecttemplate", current)) {
+		for (int i = 0; i < static_cast<int>(m_newProjectTemplates.size()); ++i) {
+			if (ImGui::Selectable(m_newProjectTemplates[i].name.c_str(), i == m_newProjectTemplate)) m_newProjectTemplate = i;
+		}
+		ImGui::EndCombo();
+	}
+	if (haveTemplates) ImGui::TextWrapped("%s", m_newProjectTemplates[m_newProjectTemplate].description.c_str());
+	ImGui::Spacing();
+	ImGui::Checkbox("Replace files that already exist", &m_newProjectOverwrite);
+	if (!m_newProjectError.empty()) ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.4f, 1.0f), "%s", m_newProjectError.c_str());
+	ImGui::Spacing();
+
+	if (ui::Btn("Create", true) && haveTemplates) {
+		ProjectTemplates::CreateRequest request;
+		request.name = m_newProjectName;
+		request.templateId = m_newProjectTemplates[m_newProjectTemplate].id;
+		request.root = root;
+		request.projectDir = m_newProjectLocation;
+		request.overwrite = m_newProjectOverwrite;
+		ProjectTemplates::CreateResult result;
+		std::string error;
+		if (ProjectTemplates::Create(request, result, error)) {
+			ui::Toast("Created " + result.projectDescriptor, ui::ToastKind::Success);
+			ImGui::CloseCurrentPopup();
+			// Opening the main scene activates the project, as for any project scene.
+			RequestScene(result.mainScene);
+		}
+		else {
+			m_newProjectError = error;
+		}
+	}
+	ImGui::SameLine();
+	if (ui::Btn("Cancel", false)) ImGui::CloseCurrentPopup();
+	ImGui::EndPopup();
+}
+
+void EditorWorkspace::DrawOpenProjectModal()
+{
+	if (m_openOpenProject) {
+		m_projectFolders.clear();
+		std::error_code ec;
+		for (const fs::directory_entry& entry : fs::directory_iterator(ProjectBootstrap::Info().sourceRoot / "projects", ec)) {
+			if (entry.is_directory(ec) && fs::is_regular_file(entry.path() / "project.json", ec)) {
+				m_projectFolders.push_back(entry.path().filename().string());
+			}
+		}
+		std::sort(m_projectFolders.begin(), m_projectFolders.end());
+		ImGui::OpenPopup("Open Project");
+		m_openOpenProject = false;
+	}
+	if (!ImGui::BeginPopupModal("Open Project", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
+	if (m_projectFolders.empty()) ImGui::TextDisabled("No projects under projects/. File > New Project creates one.");
+	ImGui::BeginChild("##openprojectlist", ImVec2(360.0f, 240.0f), true);
+	for (const std::string& folder : m_projectFolders) {
+		if (!ImGui::Selectable(("projects/" + folder).c_str())) continue;
+		// The project's main scene: scenes/main.json when present, else its first scene in the list.
+		const std::string prefix = "projects/" + folder + "/scenes/";
+		std::string target;
+		for (const std::string& scene : m_core.GetSceneList()) {
+			if (scene.rfind(prefix, 0) != 0) continue;
+			if (scene == prefix + "main.json") { target = scene; break; }
+			if (target.empty()) target = scene;
+		}
+		ImGui::CloseCurrentPopup();
+		if (target.empty()) ui::Toast("projects/" + folder + " has no scenes", ui::ToastKind::Warning);
+		else RequestScene(target);
+	}
+	ImGui::EndChild();
+	if (ui::Btn("Cancel", false)) ImGui::CloseCurrentPopup();
+	ImGui::EndPopup();
 }
 
 void EditorWorkspace::DrawBuildOutput()
@@ -2433,6 +2560,8 @@ void EditorWorkspace::DrawPreferences()
 
 void EditorWorkspace::DrawModals()
 {
+	DrawNewProjectModal();
+	DrawOpenProjectModal();
 	if (m_openRename) {
 		ImGui::OpenPopup("Rename Node");
 		m_openRename = false;

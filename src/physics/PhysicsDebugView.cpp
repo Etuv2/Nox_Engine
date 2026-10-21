@@ -82,6 +82,31 @@ void DrawBody(const RigidBody& body, const PhysicsDebugView& view) {
 		case RigidBody::ShapeType::PLANE:
 			DrawPlanePatch(body.getPlaneNormal(), body.getPlaneDistance(), kPlaneColor);
 			break;
+		case RigidBody::ShapeType::CAPSULE: {
+			// Two end spheres and four lines along the sides.
+			glm::vec3 a, b;
+			body.getCapsuleEnds(a, b);
+			const float r = body.getRadius();
+			const glm::vec3 axis = glm::normalize(b - a + glm::vec3(1e-6f));
+			const glm::vec3 helper = std::abs(axis.y) < 0.9f ? glm::vec3(0.0f, 1.0f, 0.0f) : glm::vec3(1.0f, 0.0f, 0.0f);
+			const glm::vec3 side = glm::normalize(glm::cross(axis, helper)) * r;
+			const glm::vec3 other = glm::normalize(glm::cross(axis, side)) * r;
+			DebugDraw::AddSphere(a, r, color, 0.0f);
+			DebugDraw::AddSphere(b, r, color, 0.0f);
+			DebugDraw::AddLine(a + side, b + side, color, 0.0f);
+			DebugDraw::AddLine(a - side, b - side, color, 0.0f);
+			DebugDraw::AddLine(a + other, b + other, color, 0.0f);
+			DebugDraw::AddLine(a - other, b - other, color, 0.0f);
+			break;
+		}
+		case RigidBody::ShapeType::MESH: {
+			// The mesh's local bounds as a box (its triangles are not drawn).
+			const glm::vec3 mn = body.getMeshLocalMin(), mx = body.getMeshLocalMax();
+			const glm::mat4 xf = glm::translate(glm::mat4(1.0f), position) * glm::mat4_cast(body.getOrientation()) *
+				glm::translate(glm::mat4(1.0f), (mn + mx) * 0.5f);
+			DrawOrientedBox(xf, (mx - mn) * 0.5f, color);
+			break;
+		}
 		}
 	}
 	if (view.aabbs) {

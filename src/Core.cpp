@@ -46,6 +46,7 @@
 #include "SceneGraph.h"
 #include "SceneNode.h"
 #include "SceneLoader.h"
+#include "SceneLoadingScreen.h"
 #include "ModelManager.h"
 #include "DirectionalLight.h"
 #include "LightManager.h"
@@ -675,58 +676,22 @@ bool Core::InitializeScene() {
 		};
 		services.destroyNode = [this](const std::shared_ptr<SceneNode>& node) { return DestroySceneNodeForPlay(node); };
 	}
-	// Load the Scene using SceneLoader
+	// The startup scene loads in the background: the window shows the loading screen (Update and Render) until the
+	// scene is committed (CommitLoadedScene). A state file (NOX_FIRST_SCENE_STATE) loads synchronously in InitializeUI.
 	m_sceneLoader = std::make_shared<SceneLoader>(m_modelManager, m_physicsEngine, m_windowWidth, m_windowHeight);
-	m_sceneGraph = m_sceneLoader->LoadScene(m_sceneToLoad);
+	m_sceneLoadStartup = true;
+	m_sceneLoadTarget = m_sceneToLoad;
 	m_currentSceneFilePath = m_sceneToLoad;
-
-	if (!m_sceneGraph || !m_sceneGraph->GetRoot()) {
-		std::cerr << "[Core] Failed to load initial scene: " << m_sceneToLoad << std::endl;
+	m_sceneLoadStartTime = std::chrono::steady_clock::now();
+	if (!m_sceneLoader->BeginLoad(m_sceneToLoad)) {
+		std::cerr << "[Core] Failed to start loading the initial scene: " << m_sceneToLoad << std::endl;
 		return false;
 	}
-
-	m_exposure = m_sceneGraph->m_exposure;
-	m_gamma = m_sceneGraph->m_gamma;
-	m_sceneName = m_sceneGraph->GetSceneName();
-	m_sceneHasAudioNodes = !m_sceneGraph->FindNodesByType(SceneNode::AUDIO).empty();
-	ApplySceneCameraOverride(m_sceneToLoad);
-
-	// Sync physics enabled state from scene JSON
-	m_physicsEnabledForScene = m_sceneGraph->IsPhysicsEnabled();
-	if (m_physicsEngine) {
-		if (m_physicsEnabledForScene) m_physicsEngine->Resume(); else m_physicsEngine->Pause();
+	// NOX_SYNC_LOAD=1: the old blocking startup (the scene is committed before this returns).
+	if (GetEnvVarString("NOX_SYNC_LOAD") == "1") {
+		FinishSceneLoadSynchronously();
+		return m_sceneGraph && m_sceneGraph->GetRoot();
 	}
-
-	auto lightManager = m_sceneGraph->GetLightManager();
-	if (lightManager) {
-		lightManager->GetShadowConfig().directionalSplitLambda = m_splitLambda;
-		lightManager->InitializeShadowSystem(8, m_shadowSize);
-		lightManager->CollectLightsFromScene(m_sceneGraph);
-		if (lightManager->GetEnabledLightCount() == 0 && m_lighting) {
-			lightManager->RegisterLight(m_lighting, "MainDirectionalLight");
-		}
-		lightManager->PrintLightInfo();
-	}
-
-	ComputeSceneBoundingBox();
-
-	if (m_modularRenderer) {
-		m_sceneHasRenderSettings = SceneRenderSettings::ApplyFromSceneFile(
-			m_modularRenderer->GetContext(), m_sceneToLoad, m_sceneHasRenderSettings);
-	}
-	m_benchmark = BenchmarkRunner::CreateFromEnvironment(m_sceneToLoad);
-	if (m_game) {
-		GameModuleServices services;
-		services.physics = m_physicsEngine.get();
-		m_game->SetServices(services);
-		m_game->SetCameraTemplate(*m_camera);
-	}
-	SaveRoundtripCopyIfRequested();
-	ConfigureGameFromScene(m_sceneToLoad);
-	if (!m_benchmark && m_game && m_game->IsAvailable() && (m_launch.mode == AppMode::Game || m_game->WantsAutoPlay())) {
-		RequestPlay();
-	}
-
 	return true;
 }
 
@@ -884,6 +849,9 @@ void Core::Shutdown() {
 
 	nox::reflect::Services() = {};
 	m_sceneGraph.reset();
+	if (m_sceneLoader) {
+		m_sceneLoader->CancelLoad();  // stops the decode worker before the model manager goes
+	}
 	m_sceneLoader.reset();
 	m_modelManager.reset();
 	m_lighting.reset();
@@ -946,6 +914,28 @@ void Core::Update(float deltaTime) {
 	// before any game or physics step runs.
 	if (m_roundtripDone) {
 		m_quitRequested = true;
+		return;
+	}
+
+	// Scene loading: advance the background load (Render draws the loading screen). Nothing simulates while a scene
+	// loads or a failed load waits for Continue. The frame that commits a scene simulates as usual.
+	if (IsSceneLoading()) {
+		m_sceneLoadWorstFrameMs = std::max(m_sceneLoadWorstFrameMs, deltaTime * 1000.0f);
+		if (deltaTime > 0.05f) {
+			// A frame over 50 ms during a load: report it with the step it was working on.
+			std::cout << "[Core] Long frame during scene load: " << static_cast<int>(deltaTime * 1000.0f) << " ms ("
+				<< (m_commitTask ? m_commitStage : std::string("load")) << ")" << std::endl;
+		}
+		// The commit runs inside this call: its time is a frame of the load as well.
+		const auto serviceStart = std::chrono::steady_clock::now();
+		ServiceSceneLoad();
+		m_sceneLoadWorstFrameMs = std::max(m_sceneLoadWorstFrameMs,
+			std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - serviceStart).count());
+	}
+	else {
+		ServiceSceneLoad();
+	}
+	if (IsSceneBusy()) {
 		return;
 	}
 
@@ -1231,6 +1221,23 @@ void Core::RenderSceneTo(rhi::FramebufferHandle framebuffer, int width, int heig
 }
 
 void Core::Render(int windowWidth, int windowHeight) {
+	// A scene is loading (or a load failed): the loading screen covers the window in game mode. In the editor the
+	// editor stays up under a dimmed overlay, once a scene exists.
+	const bool sceneBusy = IsSceneBusy();
+	if (sceneBusy && (!m_editor || !m_sceneGraph)) {
+		m_windowWidth = windowWidth;
+		m_windowHeight = windowHeight;
+		rhi::Gpu().BindFramebuffer(rhi::kBackBuffer);
+		rhi::Gpu().SetViewport({ 0, 0, m_windowWidth, m_windowHeight });
+		rhi::Gpu().SetClearColor(glm::vec4(0.04f, 0.05f, 0.06f, 1.0f));
+		rhi::Gpu().Clear(rhi::ClearColor | rhi::ClearDepth);
+		rhi::Gpu().ImGuiNewFrame();
+		ImGui::NewFrame();
+		RenderSceneLoadingUI(false);
+		ImGui::Render();
+		rhi::Gpu().ImGuiRender(ImGui::GetDrawData());
+		return;
+	}
 	if (!m_sceneGraph) return;
 
 	m_windowWidth = windowWidth;
@@ -1286,6 +1293,7 @@ void Core::Render(int windowWidth, int windowHeight) {
 			m_game->DrawOverlay(ImGui::GetForegroundDrawList(), glm::vec2(0.0f), glm::vec2(size.x, size.y), dt);
 		}
 		DrawDebugPrimitives(ImGui::GetForegroundDrawList(), camera, 0.0f, 0.0f, static_cast<float>(m_windowWidth), static_cast<float>(m_windowHeight));
+		PresentSceneOverlay();
 		FrameProfiler::Mark("overlay");
 		ImGui::Render();
 		rhi::Gpu().ImGuiRender(ImGui::GetDrawData());
@@ -1312,9 +1320,15 @@ void Core::Render(int windowWidth, int windowHeight) {
 		m_cachedImGuiCamera = m_camera;
 	}
 	m_imguiInterface->SetFrameData(m_frameTimeBuffer.data(), m_frameTimeCount);
+	// While a scene loads the editor is visible but inert: its widgets are disabled under the loading overlay.
+	if (sceneBusy) ImGui::BeginDisabled();
 	m_editor->Draw(dt);
 	// Legacy panels (rendering, lighting, profiler, animation, ...) dock into the workspace.
 	m_imguiInterface->Render(m_windowWidth, m_windowHeight, m_fps, m_sceneName, m_lightPos, m_lightDir);
+	if (sceneBusy) {
+		ImGui::EndDisabled();
+		RenderSceneLoadingUI(true);
+	}
 	if (m_editor->WantsQuit()) {
 		m_quitRequested = true;
 	}
@@ -1356,6 +1370,7 @@ void Core::Render(int windowWidth, int windowHeight) {
 	rhi::Gpu().SetViewport({ 0, 0, m_windowWidth, m_windowHeight });
 	rhi::Gpu().SetClearColor(glm::vec4(0.05f, 0.05f, 0.06f, 1.0f));
 	rhi::Gpu().Clear(rhi::ClearColor | rhi::ClearDepth);
+	PresentSceneOverlay();
 	ImGui::Render();
 	rhi::Gpu().ImGuiRender(ImGui::GetDrawData());
 }
@@ -1494,7 +1509,16 @@ void Core::OnWindowResize(int newWidth, int newHeight) {
 	std::cout << "[Core] Window resized to " << m_windowWidth << "x" << m_windowHeight << std::endl;
 }
 
+bool Core::IsSceneLoading() const {
+	return (m_sceneLoader && m_sceneLoader->GetLoadStatus() == SceneLoader::LoadStatus::Running) || m_commitTask != nullptr;
+}
+
 void Core::SwapScene(const std::string& newSceneFile) {
+	if (IsSceneBusy()) {
+		// One load at a time: the request runs once the current load has been resolved (Update consumes it).
+		m_pendingSceneSwap = newSceneFile;
+		return;
+	}
 	std::cout << "[Core] Swapping to scene: " << newSceneFile << std::endl;
 	if (m_playing && m_game) {
 		m_game->EndPlay();
@@ -1503,76 +1527,230 @@ void Core::SwapScene(const std::string& newSceneFile) {
 
 	const std::string resolvedSceneFile = ResolveSceneFilePath(newSceneFile);
 	m_sceneToLoad = resolvedSceneFile;
-	CleanupCurrentScene();
+	if (!m_sceneLoader) {
+		CleanupCurrentScene();
+		return;
+	}
+	// The old scene stays live (and under the loading overlay in the editor) until the new one is committed.
+	m_sceneLoadTarget = resolvedSceneFile;
+	m_sceneLoadStartup = false;
+	m_sceneLoadStartTime = std::chrono::steady_clock::now();
+	m_sceneLoadWorstFrameMs = 0.0f;
+	if (!m_sceneLoader->BeginLoad(resolvedSceneFile)) {
+		m_sceneLoadError = "A scene load is already running";
+	}
+}
 
-	if (m_sceneLoader) {
-		auto newGraph = m_sceneLoader->LoadScene(resolvedSceneFile);
-		if (newGraph) {
-			m_sceneGraph = newGraph;
-			m_currentSceneFilePath = resolvedSceneFile;
+void Core::FinishSceneLoadSynchronously() {
+	if (!m_sceneLoader) return;
+	m_sceneLoader->StepLoad(-1.0);
+	ServiceSceneLoad(-1.0);
+	while (m_commitTask) {
+		ServiceSceneLoad(-1.0);
+	}
+}
 
-			m_exposure = m_sceneGraph->m_exposure;
-			m_gamma = m_sceneGraph->m_gamma;
-			m_sceneName = m_sceneGraph->GetSceneName();
-			m_sceneHasAudioNodes = !m_sceneGraph->FindNodesByType(SceneNode::AUDIO).empty();
-			ApplySceneCameraOverride(resolvedSceneFile);
-
-			m_physicsEnabledForScene = m_sceneGraph->IsPhysicsEnabled();
-			if (m_physicsEngine) {
-				if (m_physicsEnabledForScene) m_physicsEngine->Resume(); else m_physicsEngine->Pause();
-			}
-
-			// Update state manager with new scene file path
-			if (m_stateManager) {
-				m_stateManager->SetCurrentSceneFilePath(resolvedSceneFile);
-			}
-
-			auto lightManager = m_sceneGraph->GetLightManager();
-			if (lightManager) {
-				lightManager->GetShadowConfig().directionalSplitLambda = m_splitLambda;
-				lightManager->InitializeShadowSystem(8, m_shadowSize);
-				lightManager->CollectLightsFromScene(m_sceneGraph);
-				if (lightManager->GetEnabledLightCount() == 0 && m_lighting) {
-					lightManager->RegisterLight(m_lighting, "MainDirectionalLight");
-				}
-				lightManager->PrintLightInfo();
-			}
-
-			if (m_modularRenderer) {
-				m_sceneHasRenderSettings = SceneRenderSettings::ApplyFromSceneFile(
-					m_modularRenderer->GetContext(), resolvedSceneFile, m_sceneHasRenderSettings);
-			}
-			ConfigureGameFromScene(resolvedSceneFile);
-			m_dirty = false;
-			if (m_editor) {
-				m_editor->OnSceneLoaded();
-			}
-
-			if (m_imguiInterface) {
-				m_imguiInterface->SetSceneGraph(m_sceneGraph);
-				// Re-read renderer settings into the editor so it does not push stale values back.
-				m_imguiInterface->SetModularRenderer(m_modularRenderer);
-			}
-
-			if (m_inputIntegration) {
-				m_inputIntegration->SetSceneGraph(m_sceneGraph);
-				m_inputIntegration->SetLightManager(GetLightManager());
-			}
-
-			ComputeSceneBoundingBox();
-
-			std::cout << "[Core] Scene swap completed successfully: " << resolvedSceneFile << std::endl;
+void Core::ServiceSceneLoad(double budgetMs) {
+	if (!m_sceneLoader) return;
+	if (budgetMs < 0.0) {
+		budgetMs = -1.0;
+	}
+	// Commit in progress: run its next slice of work.
+	if (m_commitTask) {
+		if (m_commitTask->Resume(budgetMs)) {
+			m_commitTask.reset();
+			m_scenePresentPending = true;  // the loading screen stays up until the first frame of the new scene
 		}
-		else {
-			std::cerr << "[Core] Failed to load scene: " << resolvedSceneFile << std::endl;
+		return;
+	}
+	SceneLoader::LoadStatus status = m_sceneLoader->GetLoadStatus();
+	if (status == SceneLoader::LoadStatus::Running) {
+		status = m_sceneLoader->StepLoad(budgetMs);
+	}
+	if (status == SceneLoader::LoadStatus::Ready) {
+		m_commitGraph = m_sceneLoader->TakeLoadedScene();
+		m_commitStartup = m_sceneLoadStartup;
+		m_sceneLoadStartup = false;
+		m_commitStepStart = {};
+		m_commitTask = std::make_unique<SliceTask>([this] {
+			CommitLoadedScene(m_commitGraph, m_sceneLoadTarget, m_commitStartup);
+		});
+		if (m_commitTask->Resume(budgetMs)) {
+			m_commitTask.reset();
+			m_scenePresentPending = true;
 		}
+	}
+	else if (status == SceneLoader::LoadStatus::Failed) {
+		m_sceneLoadError = m_sceneLoader->GetLoadError();
+		if (m_sceneLoadError.empty()) m_sceneLoadError = "Failed to load scene: " + m_sceneLoadTarget;
+		m_sceneLoadStartup = false;
+		// Resets the loader; the failed load touched nothing of the live scene.
+		m_sceneLoader->CancelLoad();
+		std::cerr << "[Core] Scene load failed, keeping the current scene: " << m_sceneLoadError << std::endl;
+	}
+}
 
-		m_bvhDirty = true;
-		m_boundingBoxCached = false;
+// Commit runs as a slice task: each step is timed and gives the frame back when the budget is spent.
+void Core::CommitMark(const char* name)
+{
+	const auto now = std::chrono::steady_clock::now();
+	if (m_commitStepStart != std::chrono::steady_clock::time_point{}) {
+		const double ms = std::chrono::duration<double, std::milli>(now - m_commitStepStart).count();
+		std::cout << "[Core] Scene commit step '" << m_commitStage << "': " << static_cast<int>(ms * 10.0) / 10.0 << " ms" << std::endl;
+	}
+	m_commitStage = name;
+	m_commitStepStart = now;
+	++m_commitStepIndex;
+	SliceTask::YieldIfOverBudget();
+}
 
-		if (m_modularRenderer) {
-			m_modularRenderer->ResetTAA();
+void Core::CommitLoadedScene(const std::shared_ptr<SceneGraph>& newGraph, const std::string& resolvedSceneFile, bool startup) {
+	m_commitStepIndex = 0;
+	if (!newGraph || !newGraph->GetRoot()) {
+		m_sceneLoadError = "Failed to load scene: " + resolvedSceneFile;
+		return;
+	}
+	CommitMark("Clearing the previous scene");
+	if (!startup) {
+		// The replaced scene's physics bodies were retired by SceneLoader::TakeLoadedScene.
+		CleanupCurrentScene(false);
+	}
+	CommitMark("Assigning scene state");
+	m_sceneGraph = newGraph;
+	m_currentSceneFilePath = resolvedSceneFile;
+
+	m_exposure = m_sceneGraph->m_exposure;
+	m_gamma = m_sceneGraph->m_gamma;
+	m_sceneName = m_sceneGraph->GetSceneName();
+	m_sceneHasAudioNodes = !m_sceneGraph->FindNodesByType(SceneNode::AUDIO).empty();
+	ApplySceneCameraOverride(resolvedSceneFile);
+
+	// Update state manager with new scene file path
+	if (m_stateManager) {
+		m_stateManager->SetCurrentSceneFilePath(resolvedSceneFile);
+	}
+
+	m_physicsEnabledForScene = m_sceneGraph->IsPhysicsEnabled();
+	if (m_physicsEngine) {
+		if (m_physicsEnabledForScene) m_physicsEngine->Resume(); else m_physicsEngine->Pause();
+	}
+
+	auto lightManager = m_sceneGraph->GetLightManager();
+	if (lightManager) {
+		CommitMark("Shadow maps");
+		lightManager->GetShadowConfig().directionalSplitLambda = m_splitLambda;
+		lightManager->InitializeShadowSystem(8, m_shadowSize);
+		CommitMark("Lights");
+		lightManager->CollectLightsFromScene(m_sceneGraph);
+		if (lightManager->GetEnabledLightCount() == 0 && m_lighting) {
+			lightManager->RegisterLight(m_lighting, "MainDirectionalLight");
 		}
+		lightManager->PrintLightInfo();
+	}
+
+	CommitMark("Render settings");
+	if (m_modularRenderer) {
+		m_sceneHasRenderSettings = SceneRenderSettings::ApplyFromSceneFile(
+			m_modularRenderer->GetContext(), resolvedSceneFile, m_sceneHasRenderSettings);
+	}
+	if (startup) {
+		m_benchmark = BenchmarkRunner::CreateFromEnvironment(resolvedSceneFile);
+		if (m_game) {
+			GameModuleServices services;
+			services.physics = m_physicsEngine.get();
+			m_game->SetServices(services);
+			m_game->SetCameraTemplate(*m_camera);
+		}
+	}
+	CommitMark("Game module");
+	ConfigureGameFromScene(resolvedSceneFile);
+	m_dirty = false;
+	CommitMark("Editor and UI");
+	if (m_editor) {
+		m_editor->OnSceneLoaded();
+	}
+
+	if (m_imguiInterface) {
+		m_imguiInterface->SetSceneGraph(m_sceneGraph);
+		// Re-read renderer settings into the editor so it does not push stale values back.
+		m_imguiInterface->SetModularRenderer(m_modularRenderer);
+	}
+
+	if (m_inputIntegration) {
+		m_inputIntegration->SetSceneGraph(m_sceneGraph);
+		m_inputIntegration->SetLightManager(GetLightManager());
+	}
+
+	CommitMark("Bounds");
+	ComputeSceneBoundingBox();
+	m_bvhDirty = true;
+	m_boundingBoxCached = false;
+	CommitMark("Acceleration structure");
+	RebuildSceneBVH();
+
+	if (m_modularRenderer) {
+		m_modularRenderer->ResetTAA();
+	}
+
+	if (startup) {
+		CommitMark("Startup");
+		SaveRoundtripCopyIfRequested();
+		if (!m_benchmark && m_game && m_game->IsAvailable() && (m_launch.mode == AppMode::Game || m_game->WantsAutoPlay())) {
+			RequestPlay();
+		}
+	}
+	CommitMark("Finishing");
+	const double wallMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - m_sceneLoadStartTime).count();
+	std::cout << "[Core] Scene ready: " << resolvedSceneFile << " (load " << static_cast<int>(wallMs) << " ms, longest frame while loading "
+		<< static_cast<int>(m_sceneLoadWorstFrameMs) << " ms)" << std::endl;
+}
+
+// The first frame after a commit draws the loading screen over the new scene; the screen then goes away.
+void Core::PresentSceneOverlay() {
+	if (!m_scenePresentPending) return;
+	RenderSceneLoadingUI(true);
+	// The screen stays up while the new scene's reflection probes are captured (a few per frame).
+	const bool probesCapturing = m_modularRenderer && m_modularRenderer->GetContext().reflectionCaptureInProgress;
+	if (!probesCapturing) {
+		m_scenePresentPending = false;
+		const double firstFrameMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - m_sceneLoadStartTime).count();
+		std::cout << "[Core] Scene first frame presented: " << static_cast<int>(firstFrameMs) << " ms after the load started" << std::endl;
+	}
+}
+
+void Core::RenderSceneLoadingUI(bool overlay) {
+	SceneLoadingScreenState state;
+	const SceneLoader::LoadProgress progress = m_sceneLoader ? m_sceneLoader->GetLoadProgress() : SceneLoader::LoadProgress{};
+	state.sceneFile = m_sceneLoadTarget;
+	state.sceneName = progress.sceneName;
+	if (state.sceneName.empty()) {
+		const size_t slash = m_sceneLoadTarget.find_last_of("/\\");
+		state.sceneName = slash == std::string::npos ? m_sceneLoadTarget : m_sceneLoadTarget.substr(slash + 1);
+	}
+	if (m_commitTask) {
+		// The commit covers the last 10% of the bar, one step at a time.
+		state.progress = 0.9f + 0.1f * std::min(1.0f, static_cast<float>(m_commitStepIndex) / 10.0f);
+		state.stage = m_commitStage;
+	}
+	else if (IsSceneLoading()) {
+		state.progress = progress.fraction * 0.9f;
+		state.stage = progress.stage;
+	}
+	else if (m_scenePresentPending) {
+		state.progress = 1.0f;
+		state.stage = "Starting";
+	}
+	else {
+		state.progress = 1.0f;
+	}
+	state.error = m_sceneLoadError;
+	state.startupFailure = m_sceneGraph == nullptr;
+	state.overlay = overlay;
+	state.timeSeconds = ImGui::GetTime();
+	if (SceneLoadingScreen::Draw(state) == SceneLoadingScreenAction::Dismiss && !m_sceneLoadError.empty()) {
+		// Continue keeps the current scene; with no scene at all (startup failure) the engine quits.
+		m_sceneLoadError.clear();
+		if (state.startupFailure) m_quitRequested = true;
 	}
 }
 
@@ -1631,7 +1809,7 @@ void Core::SetMouseLocked(bool locked) {
 	}
 }
 
-void Core::CleanupCurrentScene() {
+void Core::CleanupCurrentScene(bool removePhysicsBodies) {
 	std::cout << "[Core] Cleaning up current scene" << std::endl;
 
 	// Stop all animations before cleanup
@@ -1641,7 +1819,7 @@ void Core::CleanupCurrentScene() {
 	}
 
 	// Clean up all physics bodies to prevent memory leaks and duplicate registrations
-	if (m_physicsEngine) {
+	if (removePhysicsBodies && m_physicsEngine) {
 		std::cout << "[Core] Removing all physics bodies from engine" << std::endl;
 		m_physicsEngine->RemoveAllBodies();
 	}
@@ -1928,6 +2106,10 @@ bool Core::SaveSceneState(const std::string& filepath) {
 }
 
 bool Core::LoadSceneState(const std::string& filepath) {
+	// State restore is synchronous: a background scene load that is still running finishes first.
+	if (IsSceneLoading()) {
+		FinishSceneLoadSynchronously();
+	}
 	if (!m_stateManager || !m_camera) {
 		std::cerr << "[Core] Cannot load state: missing components" << std::endl;
 		return false;
@@ -2110,6 +2292,13 @@ std::vector<std::string> Core::GetSceneList() const
 	AssetIO::ListOptions options;
 	options.extension = ".json";
 	for (const std::string& path : AssetIO::List("scenes", options)) add(path);
+	// Project scenes (projects/<name>/scenes/*.json, e.g. from File > New Project) open from the same list.
+	AssetIO::ListOptions projectOptions;
+	projectOptions.recursive = true;
+	projectOptions.extension = ".json";
+	for (const std::string& path : AssetIO::List("projects", projectOptions)) {
+		if (path.find("/scenes/") != std::string::npos) add(path);
+	}
 	std::sort(scenes.begin(), scenes.end());
 	return scenes;
 }

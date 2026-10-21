@@ -1,4 +1,5 @@
-﻿#include "Scene.h"
+﻿#include "SliceTask.h"
+#include "Scene.h"
 #include "GpuBuffer.h"
 #include "TextureUnits.h"
 #include <glm/gtc/type_ptr.hpp>
@@ -692,6 +693,7 @@ static bool ReadFloatAttribute(
 	}
 
 	for (size_t i = 0; i < acc.count; i++) {
+		if (((i) & 255u) == 0) SliceTask::YieldIfOverBudget();  // slice point inside large vertex loops
 		float values[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
 		const unsigned char* elementPtr = dataPtr + i * stride;
 		for (size_t c = 0; c < numComponents; ++c) {
@@ -737,6 +739,7 @@ static bool ReadUIntAttribute(
 	}
 
 	for (size_t i = 0; i < acc.count; ++i) {
+		if (((i) & 255u) == 0) SliceTask::YieldIfOverBudget();  // slice point inside large vertex loops
 		uint32_t values[4] = { 0u, 0u, 0u, 0u };
 		const unsigned char* elementPtr = dataPtr + i * stride;
 		for (size_t c = 0; c < numComponents; ++c) {
@@ -789,6 +792,7 @@ static void ComputeVertexNormalsFromIndexedTriangles(std::vector<Vertex>& vertic
 
 	if (indices.size() >= 3) {
 		for (size_t i = 0; i + 2 < indices.size(); i += 3) {
+		if (((i/3) & 255u) == 0) SliceTask::YieldIfOverBudget();  // slice point inside large vertex loops
 			const unsigned int i0 = indices[i + 0];
 			const unsigned int i1 = indices[i + 1];
 			const unsigned int i2 = indices[i + 2];
@@ -849,6 +853,7 @@ static bool ReadMat4Attribute(
 	}
 
 	for (size_t i = 0; i < acc.count; ++i) {
+		if (((i) & 255u) == 0) SliceTask::YieldIfOverBudget();  // slice point inside large vertex loops
 		glm::mat4 matrix(1.0f);
 		const unsigned char* elementPtr = dataPtr + i * stride;
 		for (int c = 0; c < 16; ++c) {
@@ -1104,26 +1109,23 @@ static GltfTextureAlphaInfo AnalyzeTextureAlpha(const tinygltf::Model& model, in
 	return info;
 }
 
-bool Scene::LoadFromGLTF(const std::string& path) {
-	using Clock = std::chrono::high_resolution_clock;
-	const auto loadStart = Clock::now();
+struct PreparedGltf {
+	tinygltf::Model model;
 	float parseMs = 0.0f;
-	float nodeBuildMs = 0.0f;
-	float primitiveBuildMs = 0.0f;
-	float materialSetupMs = 0.0f;
-	float animationLoadMs = 0.0f;
-	size_t totalVertexCount = 0;
-	size_t totalIndexCount = 0;
+};
 
+std::shared_ptr<PreparedGltf> Scene::PrepareGLTF(const std::string& path) {
+	using Clock = std::chrono::high_resolution_clock;
 	tinygltf::TinyGLTF loader;
 	loader.SetImageLoader(&LoadGltfImageOrSkip, nullptr);
-	tinygltf::Model model;
+	auto prepared = std::make_shared<PreparedGltf>();
+	tinygltf::Model& model = prepared->model;
 	std::string err, warn;
 	bool ret = false;
 	// Logical model path: external buffers/images resolve relative to it through AssetIO.
 	if (!loader.SetFsCallbacks(AssetIO::MakeGltfFsCallbacks(), &err)) {
 		std::cerr << "[GLTF Error] " << err << std::endl;
-		return false;
+		return nullptr;
 	}
 	const auto parseStart = Clock::now();
 
@@ -1144,10 +1146,28 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 	}
 	if (!ret) {
 		std::cerr << "[GLTF Error] Failed to load: " << path << std::endl;
+		return nullptr;
+	}
+	prepared->parseMs = std::chrono::duration<float, std::milli>(Clock::now() - parseStart).count();
+	return prepared;
+}
+
+bool Scene::LoadFromGLTF(const std::string& path, const std::shared_ptr<PreparedGltf>& prepared) {
+	using Clock = std::chrono::high_resolution_clock;
+	const auto loadStart = Clock::now();
+	// The CPU parse runs here unless a prefetched copy was supplied (ModelManager prefetch on a worker thread).
+	const std::shared_ptr<PreparedGltf> source = prepared ? prepared : PrepareGLTF(path);
+	if (!source) {
 		return false;
 	}
-	const auto parseEnd = Clock::now();
-	parseMs = std::chrono::duration<float, std::milli>(parseEnd - parseStart).count();
+	tinygltf::Model& model = source->model;
+	const float parseMs = source->parseMs;
+	float nodeBuildMs = 0.0f;
+	float primitiveBuildMs = 0.0f;
+	float materialSetupMs = 0.0f;
+	float animationLoadMs = 0.0f;
+	size_t totalVertexCount = 0;
+	size_t totalIndexCount = 0;
 
 	// Clear any existing data in this Scene
 	meshes.clear();
@@ -1630,6 +1650,7 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 			++uniqueTextureLoads;
 			if (!sharedKey.empty()) s_sharedImages[sharedKey] = loadedTexture;
 		}
+		SliceTask::YieldIfOverBudget();  // slice point: the texture is uploaded and cached
 		return loadedTexture;
 	};
 	const auto primitiveBuildStart = Clock::now();
@@ -1638,6 +1659,7 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 		for (size_t p = 0; p < gltfMesh.primitives.size(); p++) {
 			const tinygltf::Primitive& primitive = gltfMesh.primitives[p];
 			++primitiveCount;
+			SliceTask::YieldIfOverBudget();  // slice point: one primitive at a time
 			if (primitive.attributes.find("POSITION") == primitive.attributes.end()) {
 				// Skip primitive with no position data
 				continue;
@@ -2140,6 +2162,7 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 			<< " mesh attachment(s) from identity wrapper nodes to transform-carrying ancestors." << std::endl;
 	}
 
+	SliceTask::YieldIfOverBudget();  // slice point before the animation pass
 	// (2) Load animations (if any) from the glTF
 	const auto animationLoadStart = Clock::now();
 	if (!model.animations.empty()) {
@@ -2491,6 +2514,7 @@ void Scene::ComputeTangents(std::vector<Vertex>& vertices,
 
 	// Iterate over each triangle and accumulate tangents
 	for (size_t idx = 0; idx < indices.size(); idx += 3) {
+		if (((idx/3) & 255u) == 0) SliceTask::YieldIfOverBudget();  // slice point inside large vertex loops
 		unsigned int i0 = indices[idx];
 		unsigned int i1 = indices[idx + 1];
 		unsigned int i2 = indices[idx + 2];
@@ -2524,6 +2548,7 @@ void Scene::ComputeTangents(std::vector<Vertex>& vertices,
 
 	// Normalize and orthogonalize tangents, compute handedness (w)
 	for (size_t i = 0; i < vertices.size(); ++i) {
+		if (((i) & 255u) == 0) SliceTask::YieldIfOverBudget();  // slice point inside large vertex loops
 		const glm::vec3 N = glm::dot(vertices[i].normal, vertices[i].normal) > 1e-12f
 			? glm::normalize(vertices[i].normal) : glm::vec3(0.0f, 1.0f, 0.0f);
 		glm::vec3 T = tanSum[i] - N * glm::dot(N, tanSum[i]); // orthonormalize

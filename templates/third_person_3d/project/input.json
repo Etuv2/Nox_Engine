@@ -1,0 +1,10 @@
+{
+  "format": 1,
+  "actions": {
+    "move_forward": { "type": "axis", "keys_positive": ["W", "Up"], "keys_negative": ["S", "Down"] },
+    "move_forward_pad": { "type": "axis", "pad_axis": "lefty", "deadzone": 0.15 },
+    "move_strafe": { "type": "axis", "keys_positive": ["D", "Right"], "keys_negative": ["A", "Left"], "pad_axis": "leftx", "deadzone": 0.15 },
+    "look": { "type": "axis", "keys_positive": ["E"], "keys_negative": ["Q"], "pad_axis": "rightx", "deadzone": 0.15 },
+    "jump": { "type": "button", "keys": ["Space"], "pad_buttons": ["a"] }
+  }
+}

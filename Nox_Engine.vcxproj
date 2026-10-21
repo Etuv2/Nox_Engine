@@ -214,6 +214,7 @@
     <ClCompile Include="src\AnimationController.cpp" />
     <ClCompile Include="src\AnimationSystem.cpp" />
     <ClCompile Include="src\app\ProjectBootstrap.cpp" />
+    <ClCompile Include="src\app\ProjectTemplates.cpp" />
     <ClCompile Include="src\app\UserSettings.cpp" />
     <ClCompile Include="src\assets\AssetIO.cpp" />
     <ClCompile Include="src\assets\AssetIOGltf.cpp" />
@@ -329,6 +330,8 @@
     <ClCompile Include="src\SceneExtensions.cpp" />
     <ClCompile Include="src\SceneGraph.cpp" />
     <ClCompile Include="src\SceneLoader.cpp" />
+    <ClCompile Include="src\SceneLoadingScreen.cpp" />
+    <ClCompile Include="src\SliceTask.cpp" />
     <ClCompile Include="src\SceneNode.cpp" />
     <ClCompile Include="src\SceneRenderSettings.cpp" />
     <ClCompile Include="src\SceneRuntimeData.cpp" />
@@ -342,6 +345,7 @@
     <ClCompile Include="src\scripting\LuaRuntime.cpp" />
     <ClCompile Include="src\scripting\LuaServices.cpp" />
     <ClCompile Include="src\scripting\LuaUi.cpp" />
+    <ClCompile Include="src\scripting\LuaUiFocus.cpp" />
     <ClCompile Include="src\scripting\LuaVehicleBindings.cpp" />
     <ClCompile Include="src\scripting\LuaVehiclePolicy.cpp" />
     <ClCompile Include="src\scripting\LuaWorld.cpp" />
@@ -378,6 +382,8 @@
     <ClCompile Include="src\physics\CharacterSystem.cpp" />
     <ClCompile Include="src\physics\PhysicsDebugView.cpp" />
     <ClCompile Include="src\physics\ShapeOverlap.cpp" />
+<ClCompile Include="src\physics\MeshCollider.cpp" />
+<ClCompile Include="src\physics\ShapeSweep.cpp" />
     <ClCompile Include="src\physics\TriggerSystem.cpp" />
     <ClCompile Include="src\reflect\BuiltinComponents.cpp" />
     <ClCompile Include="src\reflect\Reflection.cpp" />
@@ -409,6 +415,7 @@
     <ClInclude Include="src\AnimationPose.h" />
     <ClInclude Include="src\AnimatorRuntime.h" />
     <ClInclude Include="src\app\ProjectBootstrap.h" />
+    <ClInclude Include="src\app\ProjectTemplates.h" />
     <ClInclude Include="src\app\UserSettings.h" />
     <ClInclude Include="src\assets\AssetIO.h" />
     <ClInclude Include="src\assets\AssetIOGltf.h" />
@@ -544,6 +551,8 @@
     <ClInclude Include="src\SceneExtensions.h" />
     <ClInclude Include="src\SceneGraph.h" />
     <ClInclude Include="src\SceneLoader.h" />
+    <ClInclude Include="src\SceneLoadingScreen.h" />
+    <ClInclude Include="src\SliceTask.h" />
     <ClInclude Include="src\SceneNode.h" />
     <ClInclude Include="src\SceneRenderExtras.h" />
     <ClInclude Include="src\SceneRenderSettings.h" />
@@ -560,6 +569,7 @@
     <ClInclude Include="src\scripting\LuaRuntime.h" />
     <ClInclude Include="src\scripting\LuaServices.h" />
     <ClInclude Include="src\scripting\LuaUi.h" />
+    <ClInclude Include="src\scripting\LuaUiFocus.h" />
     <ClInclude Include="src\scripting\LuaVehicleBindings.h" />
     <ClInclude Include="src\scripting\LuaVehiclePolicy.h" />
     <ClInclude Include="src\scripting\LuaWorld.h" />
@@ -606,6 +616,8 @@
     <ClInclude Include="src\physics\CharacterSystem.h" />
     <ClInclude Include="src\physics\PhysicsDebugView.h" />
     <ClInclude Include="src\physics\ShapeOverlap.h" />
+<ClInclude Include="src\physics\MeshCollider.h" />
+<ClInclude Include="src\physics\ShapeSweep.h" />
     <ClInclude Include="src\physics\TriggerSystem.h" />
     <ClInclude Include="src\procedural\ProceduralStreetGenerators.h" />
     <ClInclude Include="src\reflect\ComponentBuilders.h" />

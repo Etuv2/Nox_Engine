@@ -1,3 +1,4 @@
+#include "SliceTask.h"
 #include "LightManager.h"
 #include "LightNode.h"
 #include "SceneGraph.h"
@@ -1430,6 +1431,7 @@ void LightManager::CollectLightsFromScene(std::shared_ptr<SceneGraph> sceneGraph
 
 	auto lightNodes = sceneGraph->FindNodesByType(SceneNode::LIGHT);
 	for (auto& node : lightNodes) {
+		SliceTask::YieldIfOverBudget();  // slice point: scenes can have hundreds of lights
 		if (auto ln = std::dynamic_pointer_cast<LightNode>(node)) {
 			if (ln->GetLight()) {
 				RegisterLightNode(ln);

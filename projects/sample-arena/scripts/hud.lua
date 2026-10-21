@@ -1,12 +1,21 @@
 -- HUD demo (docs/lua_api.md "UI" and "Input"): reads the project action map through ctx and draws with ui.*.
 -- Nothing here is engine-specific. Fonts "label" and "digits" and the icon "hud/speedometer" are declared in project.json.
 
+local Menu = require("menu")
+
 local hud = { throttle = 0, steer = 0, shots = 0, visible = true }
 
 nox.system{
   name = "hud_input",
   order = -10,
   update = function(ctx, dt)
+    -- Menus own the pointer; while one is open the car does not move and the engine fades out (audio paused).
+    local blocked = Menu.blocking()
+    ctx:set_wants_pointer(blocked or hud.visible)
+    if blocked then
+      ctx:audio_set({ paused = true })
+      return
+    end
     local target = ctx:action_down("accelerate") and 1 or 0
     hud.throttle = hud.throttle + (target - hud.throttle) * math.min(1, dt * 6)
     hud.steer = ctx:axis("steer")
@@ -25,8 +34,6 @@ nox.system{
       boost = ctx:action_down("fire"),
     })
     if ctx:action_pressed("hud_toggle") then hud.visible = not hud.visible end
-    -- The HUD owns the pointer while it is visible (menus would do the same); gameplay gets it back when hidden.
-    ctx:set_wants_pointer(hud.visible)
   end,
 }
 
@@ -37,7 +44,7 @@ local WARM = 0xFFFFD27F
 local DIM = 0xFFB8C4D0
 
 nox.on_draw(function(ctx, ui, dt)
-  if not hud.visible then return end
+  if not hud.visible or not Menu.showHud or Menu.blocking() then return end
   local w, h = ui.viewport()
   local x, y = 24, h - 140
   local pw, ph = 300, 116
