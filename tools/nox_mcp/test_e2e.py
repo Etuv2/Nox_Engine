@@ -62,6 +62,11 @@ def raw_line_roundtrip(payload):
     return json.loads(buffer.split(b"\n", 1)[0].decode("utf-8"))
 
 
+def scene_ready(info):
+    """True when no scene load is running and a scene is loaded."""
+    return not info.get("loading") and bool(info.get("scene")) and not info.get("load_error")
+
+
 def wait_ready(nox, proc):
     deadline = time.monotonic() + READY_TIMEOUT_S
     last = None
@@ -70,7 +75,9 @@ def wait_ready(nox, proc):
             raise RuntimeError(f"engine exited early with code {proc.returncode}")
         try:
             info = nox.call("engine.info")
-            if not info.get("loading"):
+            if info.get("load_error"):
+                raise RuntimeError(f"scene load failed: {info['load_error']}")
+            if scene_ready(info):
                 return info
         except (OSError, NoxError) as exc:
             last = exc
@@ -233,11 +240,11 @@ def run_checks(proc):
 
         # Scene load through the normal swap
         nox.call("scene.load", {"path": SCENE})
-        deadline = time.monotonic() + 60
+        deadline = time.monotonic() + READY_TIMEOUT_S
         loaded = False
         while time.monotonic() < deadline:
             current = nox.call("engine.info")
-            if not current.get("loading") and current.get("scene", "").endswith("automation_e2e.json"):
+            if scene_ready(current) and current.get("scene", "").endswith("automation_e2e.json"):
                 loaded = True
                 break
             time.sleep(0.25)

@@ -179,8 +179,18 @@ std::shared_ptr<SceneNode> RequireNode(const json& params, const char* key = "id
 	return OptNode(params, key);
 }
 
+json LoadStateData(Core& core)
+{
+	return json{ { "loading", core.IsSceneLoading() || core.IsSceneSwapPending() },
+		{ "load_progress", core.GetSceneLoadProgress() }, { "load_step", core.GetSceneLoadStep() } };
+}
+
 std::shared_ptr<SceneGraph> RequireGraph(Core& core)
 {
+	// While a load runs the live scene may be the one being replaced: say so instead of answering from it.
+	if (core.IsSceneLoading() || core.IsSceneSwapPending()) {
+		throw RpcError{ rpc::kSceneLoading, "scene is loading (see engine.info load_progress / load_step)", LoadStateData(core) };
+	}
 	std::shared_ptr<SceneGraph> graph = core.GetSceneGraph();
 	if (!graph) EngineError("no scene is loaded");
 	return graph;
@@ -448,7 +458,10 @@ json EngineInfo(Invocation& inv)
 	info["mode"] = core.GetAppMode() == Core::AppMode::Editor ? "editor" : "game";
 	info["scene"] = core.GetCurrentScenePath();
 	info["scene_name"] = core.GetSceneName();
-	info["loading"] = core.IsSceneSwapPending();
+	info["loading"] = core.IsSceneLoading() || core.IsSceneSwapPending();
+	info["load_progress"] = core.GetSceneLoadProgress();
+	info["load_step"] = core.GetSceneLoadStep();
+	if (!core.GetSceneLoadError().empty()) info["load_error"] = core.GetSceneLoadError();
 	info["frame"] = Control().frameIndex;
 	info["fps"] = core.GetFPS();
 	info["tier"] = CurrentQualityTier();
