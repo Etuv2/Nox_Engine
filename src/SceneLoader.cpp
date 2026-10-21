@@ -8,11 +8,13 @@
 #include "PointLight.h"
 #include "SpotLight.h"
 #include "ModelManager.h"
+#include "SliceTask.h"
 #include "SceneExtensions.h"
 #include "cook/CookedResults.h"
 #include "InteriorAtlasManifest.h"
 #include "ShaderLoader.h"
 #include "assets/AssetIO.h"
+#include "assets/AssetIOJson.h"
 #include "Scene.h"
 #include "HierarchySystem.h"
 #include "AnimationSystem.h"
@@ -696,9 +698,30 @@ struct ScenePayload {
 	std::optional<std::string> text;
 	json parsed;
 	std::string parseError;
+	// Per root node: the prefab expansion error, or empty. Expanded on the worker (pure JSON and file reads).
+	std::vector<std::string> prefabErrors;
 };
 
 // Worker: file read and JSON parse. AssetIO is safe to call from any thread.
+// JSON files the scene's "game" block names (for example a road network) are read ahead on the worker too:
+// the game module reads them while the scene is committed, and a 17 MB file parsed there would stall the frame.
+void PrefetchGameJsonFiles(const json& node, int depth)
+{
+	if (depth > 6) return;
+	if (node.is_string()) {
+		const std::string text = node.get<std::string>();
+		if (text.size() > 5 && text.compare(text.size() - 5, 5, ".json") == 0) {
+			AssetIO::PrefetchJson(text);
+		}
+	}
+	else if (node.is_object()) {
+		for (const auto& item : node.items()) PrefetchGameJsonFiles(item.value(), depth + 1);
+	}
+	else if (node.is_array()) {
+		for (const json& item : node) PrefetchGameJsonFiles(item, depth + 1);
+	}
+}
+
 ScenePayload ReadAndParseScene(const std::string& resolvedScenePath)
 {
 	ScenePayload payload;
@@ -708,6 +731,20 @@ ScenePayload ReadAndParseScene(const std::string& resolvedScenePath)
 	try {
 		payload.parsed = json::parse(*payload.text);
 		payload.parsedOk = true;
+		if (payload.parsed.is_object() && payload.parsed.contains("game")) {
+			PrefetchGameJsonFiles(payload.parsed["game"], 0);
+		}
+		if (payload.parsed.is_object() && payload.parsed.contains("nodes") && payload.parsed["nodes"].is_array()) {
+			for (json& entry : payload.parsed["nodes"]) {
+				std::string prefabError;
+				if (!nox::prefab::ExpandReferences(entry, &prefabError)) {
+					payload.prefabErrors.push_back(prefabError);
+				}
+				else {
+					payload.prefabErrors.emplace_back();
+				}
+			}
+		}
 	}
 	catch (const std::exception& e) {
 		payload.parseError = e.what();
@@ -716,26 +753,64 @@ ScenePayload ReadAndParseScene(const std::string& resolvedScenePath)
 	return payload;
 }
 
-// Model files a node will load, in load order, resolved the way ProcessNode resolves them. Only plain model
-// nodes (no procedural generator) are listed: their decoded copy is the one LoadModel takes. Other models
-// (procedural, prefab references) decode on the main thread when they are built.
-void CollectPrefetchModels(const json& node, const std::string& sceneDirectory, std::vector<std::string>& out)
+// The model a procedural node will build, when its cooked result exists: the same lookup ResolveProceduralNode does
+// first, without the side files it materializes. Empty when the node will run its generator live (no output known).
+std::string PeekCookedGltfPath(const json& procedural, const json& sceneGame)
+{
+	const char* forceLive = std::getenv("NOX_PROCEDURAL_LIVE");
+	if (forceLive && std::string(forceLive) == "1") return {};
+	const std::string generator = procedural.value("generator", SceneExtensions::DefaultGenerator());
+	const json params = procedural.value("params", json::object());
+	const json authoredParams = params.is_object() ? params : json::object();
+	const ProceduralGeneratorInfo* info = SceneExtensions::FindGeneratorInfo(generator);
+	if (!info) {
+		// Generator not compiled into this executable: its cooked result is the only source (see ResolveProceduralNode).
+		CookedResults::Result cooked;
+		std::string unregisteredError;
+		if (CookedResults::FindUnregistered(generator, authoredParams, sceneGame, cooked, &unregisteredError)) {
+			return CookedResults::ToGenerated(cooked).gltfPath;
+		}
+		return {};
+	}
+	std::string error;
+	const auto identity = CookedResults::Identify(generator, *info, authoredParams, sceneGame, &error);
+	if (!identity) return {};
+	CookedResults::Result cooked;
+	std::string loadError;
+	if (CookedResults::LoadDir(identity->dir, cooked, &loadError) != CookedResults::Lookup::Found || cooked.key != identity->key) {
+		return {};
+	}
+	return CookedResults::ToGenerated(cooked).gltfPath;
+}
+
+// Model files a node will load, in load order, resolved the way ProcessNode resolves them. Plain model nodes use
+// their path; procedural nodes use the cooked output when one exists. Their decoded copies are the ones LoadModel
+// takes. Other models (live generator output) decode on the main thread when they are built.
+void CollectPrefetchModels(const json& node, const std::string& sceneDirectory, const json& sceneGame, std::vector<std::string>& out)
 {
 	if (!node.is_object()) return;
 	const std::string typeStr = node.value("type", "model");
 	const bool procedural = node.contains("procedural") && node["procedural"].is_object();
-	if (SceneLoader::GetNodeType(typeStr) == SceneLoader::NodeType::MODEL && !procedural
-		&& node.contains("path") && node["path"].is_string()) {
-		for (const std::string& candidate : BuildRelativeAssetCandidates(node["path"].get<std::string>(), sceneDirectory)) {
-			if (ReadableFileExists(candidate)) {
-				out.push_back(candidate);
-				break;
+	if (SceneLoader::GetNodeType(typeStr) == SceneLoader::NodeType::MODEL) {
+		std::string modelPath;
+		if (procedural) {
+			modelPath = PeekCookedGltfPath(node["procedural"], sceneGame);
+		}
+		else if (node.contains("path") && node["path"].is_string()) {
+			modelPath = node["path"].get<std::string>();
+		}
+		if (!modelPath.empty()) {
+			for (const std::string& candidate : BuildRelativeAssetCandidates(modelPath, sceneDirectory)) {
+				if (ReadableFileExists(candidate)) {
+					out.push_back(candidate);
+					break;
+				}
 			}
 		}
 	}
 	if (node.contains("children") && node["children"].is_array()) {
 		for (const json& child : node["children"]) {
-			CollectPrefetchModels(child, sceneDirectory, out);
+			CollectPrefetchModels(child, sceneDirectory, sceneGame, out);
 		}
 	}
 }
@@ -755,6 +830,8 @@ struct SceneLoader::LoadJob {
 	std::shared_ptr<SceneGraph> sceneGraph;
 	EntityID rootEntityID = INVALID_ENTITY;
 	std::vector<std::vector<std::string>> rootModelPaths;   // per root node: models to have decoded first
+	std::vector<std::string> prefabErrors;                  // per root node: prefab expansion error (see ScenePayload)
+	std::unique_ptr<SliceTask> rootTask;                    // the root node being built, sliced across frames
 	size_t nodeIndex = 0;
 	size_t nodeCount = 0;
 	std::vector<std::pair<std::string, SceneKeyHandler>> sceneKeys;
@@ -811,7 +888,8 @@ SceneLoader::LoadStatus SceneLoader::StepLoad(double budgetMs)
 	const auto deadline = LoadClock::now() + std::chrono::duration_cast<LoadClock::duration>(
 		std::chrono::duration<double, std::milli>(unlimited ? 0.0 : budgetMs));
 	while (m_loadStatus == LoadStatus::Running) {
-		const bool progressed = StepLoadOnce(*m_job);
+		const double remainingMs = unlimited ? -1.0 : std::max(0.0, std::chrono::duration<double, std::milli>(deadline - LoadClock::now()).count());
+		const bool progressed = StepLoadOnce(*m_job, remainingMs);
 		if (!progressed) {
 			// Waiting on a worker. A budgeted caller goes back to its frame; a blocking caller sleeps briefly.
 			if (!unlimited) break;
@@ -908,7 +986,7 @@ std::shared_ptr<SceneGraph> SceneLoader::LoadScene(const std::string& sceneFileP
 	return TakeLoadedScene();
 }
 
-bool SceneLoader::StepLoadOnce(LoadJob& job)
+bool SceneLoader::StepLoadOnce(LoadJob& job, double budgetMs)
 {
 	switch (job.phase) {
 	case LoadJob::Phase::Read: {
@@ -932,6 +1010,7 @@ bool SceneLoader::StepLoadOnce(LoadJob& job)
 			return true;
 		}
 		job.sceneJson = std::move(payload.parsed);
+		job.prefabErrors = std::move(payload.prefabErrors);
 		job.phase = LoadJob::Phase::Setup;
 		job.fraction = 0.05f;
 		return true;
@@ -982,7 +1061,7 @@ bool SceneLoader::StepLoadOnce(LoadJob& job)
 		job.rootModelPaths.assign(job.nodeCount, {});
 		std::vector<std::string> allModels;
 		for (size_t i = 0; i < job.nodeCount; ++i) {
-			CollectPrefetchModels(nodes[i], m_currentSceneDirectory, job.rootModelPaths[i]);
+			CollectPrefetchModels(nodes[i], m_currentSceneDirectory, m_sceneGameJson, job.rootModelPaths[i]);
 			allModels.insert(allModels.end(), job.rootModelPaths[i].begin(), job.rootModelPaths[i].end());
 		}
 		if (m_modelManager) {
@@ -1013,26 +1092,41 @@ bool SceneLoader::StepLoadOnce(LoadJob& job)
 		}
 		// The models of this root node must be decoded before it is built.
 		const auto decoder = m_modelManager ? m_modelManager->GetPrefetchProgress() : ModelManager::PrefetchProgress{};
-		for (const std::string& path : job.rootModelPaths[job.nodeIndex]) {
-			if (m_modelManager && m_modelManager->IsPrefetchAwaiting(path)) {
-				job.stage = "Decoding models (" + std::to_string(decoder.decoded) + "/" + std::to_string(decoder.queued) + ")";
-				job.fraction = 0.05f + 0.8f * 0.5f * (decoder.queued > 0 ? static_cast<float>(decoder.decoded) / decoder.queued : 1.0f);
+		std::vector<std::string> awaiting;
+		if (m_modelManager) {
+			for (const std::string& path : job.rootModelPaths[job.nodeIndex]) {
+				if (m_modelManager->IsPrefetchAwaiting(path)) awaiting.push_back(path);
+			}
+		}
+		if (!awaiting.empty()) {
+			job.stage = "Decoding models (" + std::to_string(decoder.decoded) + "/" + std::to_string(decoder.queued) + ")";
+			job.fraction = 0.05f + 0.8f * 0.5f * (decoder.queued > 0 ? static_cast<float>(decoder.decoded) / decoder.queued : 1.0f);
+			// Wait for the decoders inside this frame's budget rather than returning early: an idle frame is wasted time.
+			if (!m_modelManager->WaitWhileAwaiting(awaiting, budgetMs)) {
 				return false;
 			}
 		}
-		json& nodeEntry = job.sceneJson["nodes"][job.nodeIndex];
-		std::string prefabError;
-		if (!nox::prefab::ExpandReferences(nodeEntry, &prefabError)) {
-			++m_missingCriticalAssetCount;
-			std::cerr << "[SceneLoader] ERROR: prefab reference in '" << job.resolvedScenePath << "' failed: "
-				<< prefabError << std::endl;
+		// Build the root node as a slice task: its model uploads yield to the frame when the budget is spent.
+		if (!job.rootTask) {
+			job.rootTask = std::make_unique<SliceTask>([this, &job]() {
+				if (!job.prefabErrors[job.nodeIndex].empty()) {
+					++m_missingCriticalAssetCount;
+					std::cerr << "[SceneLoader] ERROR: prefab reference in '" << job.resolvedScenePath << "' failed: "
+						<< job.prefabErrors[job.nodeIndex] << std::endl;
+					return;
+				}
+				json& nodeEntry = job.sceneJson["nodes"][job.nodeIndex];
+				auto node = ProcessNodeRecursive(nodeEntry, job.rootEntityID);
+				if (node) {
+					job.sceneGraph->GetRoot()->AddChild(node);
+				}
+			});
 		}
-		else {
-			auto node = ProcessNodeRecursive(nodeEntry, job.rootEntityID);
-			if (node) {
-				job.sceneGraph->GetRoot()->AddChild(node);
-			}
+		if (!job.rootTask->Resume(budgetMs)) {
+			job.stage = "Building scene nodes (" + std::to_string(job.nodeIndex) + "/" + std::to_string(job.nodeCount) + ")";
+			return true;
 		}
+		job.rootTask.reset();
 		++job.nodeIndex;
 		job.stage = "Building scene nodes (" + std::to_string(job.nodeIndex) + "/" + std::to_string(job.nodeCount) + ")";
 		const float nodeFraction = job.nodeCount > 0 ? static_cast<float>(job.nodeIndex) / job.nodeCount : 1.0f;

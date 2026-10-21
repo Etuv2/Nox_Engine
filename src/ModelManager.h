@@ -31,6 +31,8 @@ public:
     PrefetchProgress GetPrefetchProgress() const;
     // True while a queued or in-flight prefetch of this path has not finished decoding (LoadModel would wait).
     bool IsPrefetchAwaiting(const std::string& path) const;
+    // Waits until none of these paths is still decoding, for at most maxMs (maxMs < 0: no limit). True when ready.
+    bool WaitWhileAwaiting(const std::vector<std::string>& paths, double maxMs);
 
 private:
     std::unordered_map<std::string, std::shared_ptr<Scene>> m_modelCache;

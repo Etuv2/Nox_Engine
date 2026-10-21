@@ -2,6 +2,7 @@
 #include "Scene.h"
 #include "SceneNode.h"
 #include <algorithm>
+#include <chrono>
 #include <condition_variable>
 #include <deque>
 #include <iostream>
@@ -107,6 +108,23 @@ bool ModelManager::IsPrefetchAwaiting(const std::string& path) const
     if (m_modelCache.count(path)) return false;
     std::lock_guard<std::mutex> lock(m_prefetch->mutex);
     return m_prefetch->pending.count(path) != 0 && m_prefetch->results.count(path) == 0;
+}
+
+bool ModelManager::WaitWhileAwaiting(const std::vector<std::string>& paths, double maxMs)
+{
+    std::unique_lock<std::mutex> lock(m_prefetch->mutex);
+    auto ready = [this, &paths] {
+        for (const std::string& path : paths) {
+            if (m_modelCache.count(path)) continue;
+            if (m_prefetch->pending.count(path) && !m_prefetch->results.count(path)) return false;
+        }
+        return true;
+    };
+    if (maxMs < 0.0) {
+        m_prefetch->resultReady.wait(lock, ready);
+        return true;
+    }
+    return m_prefetch->resultReady.wait_for(lock, std::chrono::duration<double, std::milli>(maxMs), ready);
 }
 
 std::shared_ptr<Scene> ModelManager::LoadModel(const std::string& path)

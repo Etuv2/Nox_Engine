@@ -134,7 +134,7 @@ private:
 	std::string m_loadError;
 	// Physics bodies registered before the running load began: the replaced scene's bodies.
 	std::vector<std::shared_ptr<RigidBody>> m_bodiesBeforeLoad;
-	bool StepLoadOnce(LoadJob& job);          // one unit of work; false when it waits on a worker
+	bool StepLoadOnce(LoadJob& job, double budgetMs);          // one unit of work; false when it waits on a worker
 	void FailLoad(const std::string& message);
 	void RetirePhysicsBodies(bool removeReplaced);  // true: bodies of the replaced scene; false: the load's own bodies
 	std::string m_currentSceneDirectory;
