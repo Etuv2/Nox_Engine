@@ -1,4 +1,5 @@
 #include "Core.h"
+#include "automation/AutomationServer.h"
 #include "BenchmarkRunner.h"
 #include "CameraPath.h"
 #include "SceneRenderSettings.h"
@@ -934,6 +935,8 @@ void Core::DrawDebugPrimitives(ImDrawList* drawList, const std::shared_ptr<Camer
 }
 
 void Core::Update(float deltaTime) {
+	// Automation server (src/automation): queued commands run here; a paused engine skips this update.
+	if (!automation::BeginFrame(*this, deltaTime)) return;
 	m_frameCpuStart = std::chrono::steady_clock::now();
 	PerformanceRecorder::ECSMetrics ecsMetrics{};
 	// Debug primitives live for real seconds: age them before this frame's scripts queue new ones.

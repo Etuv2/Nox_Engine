@@ -23,6 +23,7 @@ into coordinated implementation work with ownership and acceptance criteria.
 - [Physics](physics.md): bodies, colliders, character control, triggers and queries
 - [Audio](audio.md): mixer buses, listener and one-shots
 - [Rendering components](rendering_components.md): world environment, camera, particle emitters and decals
+- [Automation server and MCP tools](automation.md): drive and inspect a running engine from Claude Code or a shell (`--automation`)
 
 ## Engine contracts
 
