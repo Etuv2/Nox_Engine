@@ -39,6 +39,8 @@ public:
 		std::function<bool()> playing;                                    // scene edits are refused while the game runs
 		std::function<void(const std::string& scenePath)> openScene;      // Scene: switch to the scene (unsaved check)
 		std::function<void(const std::string& assetPath)> placeAsset;     // Prefab or Model: place at the spawn point
+		std::function<void(const std::string& label, std::function<void()> undo, std::function<void()> redo)> pushUndo;   // file actions
+		std::function<std::string()> currentScene;                        // open scene: its references are not rewritten
 	};
 
 	explicit ContentBrowser(Host host);
@@ -132,7 +134,7 @@ private:
 	void OpenWithShell(const Entry& e);
 	void ShowInExplorer(const std::string& logicalPath);
 	void OpenModal(Modal kind, const std::string& target, const std::string& initialName);
-	void ApplyRename(const std::string& oldPath, const std::string& newName);
+	void ApplyRename(const std::string& oldPath, const std::string& newName, bool updateRefs);
 	void DeleteEntry(const std::string& path);
 	void Duplicate(const Entry& e);
 	void CreateNew(Modal kind, const std::string& name);
@@ -178,6 +180,8 @@ private:
 	Modal m_modal = Modal::None;
 	bool m_openModal = false;
 	std::string m_modalTarget;
+	std::vector<std::string> m_modalRefs;   // scene and project files that mention m_modalTarget (physical paths)
+	bool m_modalUpdateRefs = true;
 	char m_nameBuf[256] = "";
 };
 
