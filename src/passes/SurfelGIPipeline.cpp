@@ -2293,6 +2293,7 @@ void SurfelGIPipeline::RenderDebug(RenderContext& context)
 	SetUniform2f(m_debugProgram, "uViewportSize", static_cast<float>(std::max(context.width, 1)), static_cast<float>(std::max(context.height, 1)));
 	SetUniform1ui(m_debugProgram, "uMaxSurfels", m_settings.maxSurfels);
 	SetUniform1ui(m_debugProgram, "uDebugView", static_cast<uint32_t>(m_settings.debugView));
+	SetUniform1f(m_debugProgram, "uDebugExposure", std::max(m_settings.debugExposure, 0.0f));
 	SetUniform1ui(m_debugProgram, "uMaxRays", m_settings.maxRayBudget);
 	SetUniform1i(m_debugProgram, "uSceneDepthTex", static_cast<int>(kSurfelGIGBufferDepthUnit));
 	SetUniform1i(m_debugProgram, "uUseDepthReject", hasSceneDepth ? 1 : 0);
