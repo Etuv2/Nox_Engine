@@ -203,7 +203,13 @@ tools\CheckNoRawGL.ps1
 tools\CheckCompile.ps1 src\SomeChangedFile.cpp
 tools\CheckGenericExe.ps1
 python tools\CheckVcxprojSources.py
+python tools\CheckCleanExit.py
 ```
+
+`CheckCleanExit.py` runs the Release exe for 60 frames in `--game`, `--preset editor` and editor with surfel GI, and
+fails on a non-zero exit code or any `[CrashHandler]` line (static-teardown crashes only show up there). Use
+`--repeat N` for intermittent exit crashes. `tools/nox_mcp/test_e2e.py` also checks `engine.quit` exit code 0, the
+absence of `[CrashHandler]`, and that five A-B-A scene round trips leave `gpu_objects` unchanged.
 
 `CheckGenericExe.ps1` fails when `Nox_Engine.exe` contains racing identifiers (`GameSession`, `RacingHUD`,
 `NoxRacing`, ...). It does not build anything.

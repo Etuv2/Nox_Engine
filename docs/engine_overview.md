@@ -83,6 +83,21 @@ particles, decals), [physics.md](physics.md) and [audio.md](audio.md).
 - **Diagnostics**: `src/diagnostics/` (debug draw and `debug.*` in Lua), frame profiling and the editor
   smoke test ([editor.md](editor.md#smoke-test)).
 
+### Shutdown and GPU resource ownership
+
+- Every exit path (window close, `engine.quit`, `NOX_EXIT_AFTER_FRAMES`, `NOX_EXIT_ON_FINISH`, the editor) returns
+  from `MainWindow::Run`, then `MainWindow::Cleanup` runs in this order: `Core::Shutdown` (input, ImGui interface,
+  renderer, game module, physics, then scene graph, scene loader and model manager, so scenes and their GPU objects go
+  first), ImGui backend and context, the RHI device (`rhi::SetGpu(nullptr)`), SDL window and subsystems. `AssetIO`
+  shuts down last in `RunNoxEngine`.
+- A GPU owner releases its objects in its destructor, guarded by `rhi::HasGpu()` so that a late destructor during
+  static teardown does nothing on the device. `MeshComponent` owns its vertex input and buffers, `Skybox` its
+  programs, cubemaps and VAO, `Texture` its texture. A scene swap therefore returns `engine.info` `gpu_objects` to the
+  same counts (checked by `tools/nox_mcp/test_e2e.py`).
+- No static or function-local object may touch another static from its destructor. Process-wide registries that
+  textures unregister from (`FileTextures` in `Texture.cpp`, the scene's shared image cache) are intentionally never
+  destroyed for this reason. The exit crash they caused is checked by `tools/CheckCleanExit.py`.
+
 ## Projects
 
 A game or demo is a project: a directory under `projects/<name>/`. The engine ships two examples:
