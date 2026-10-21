@@ -260,6 +260,7 @@
     <ClCompile Include="src\ImGui\ConsoleLog.cpp" />
     <ClCompile Include="src\ImGui\ContentBrowser.cpp" />
     <ClCompile Include="src\ImGui\EditorWorkspace.cpp" />
+    <ClCompile Include="src\ImGui\EditorWorkspaceSelection.cpp" />
     <ClCompile Include="src\ImGui\HelpWindow.cpp" />
     <ClCompile Include="src\ImGui\ImGuiWindowManager.cpp" />
     <ClCompile Include="src\ImGui\LightingWindow.cpp" />
@@ -366,6 +367,8 @@
     <ClCompile Include="src\diagnostics\DebugDraw.cpp" />
     <ClCompile Include="src\editor\HierarchyModel.cpp" />
     <ClCompile Include="src\editor\InspectorUndo.cpp" />
+    <ClCompile Include="src\editor\Selection.cpp" />
+    <ClCompile Include="src\editor\Clipboard.cpp" />
     <ClCompile Include="src\passes\ParticlePass.cpp" />
     <ClCompile Include="src\physics\CharacterSystem.cpp" />
     <ClCompile Include="src\physics\PhysicsDebugView.cpp" />
@@ -587,6 +590,8 @@
     <ClInclude Include="src\diagnostics\DebugDraw.h" />
     <ClInclude Include="src\editor\HierarchyModel.h" />
     <ClInclude Include="src\editor\InspectorUndo.h" />
+    <ClInclude Include="src\editor\Selection.h" />
+    <ClInclude Include="src\editor\Clipboard.h" />
     <ClInclude Include="src\passes\ParticlePass.h" />
     <ClInclude Include="src\physics\CharacterSystem.h" />
     <ClInclude Include="src\physics\PhysicsDebugView.h" />
