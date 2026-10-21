@@ -328,6 +328,7 @@
     <ClCompile Include="src\SceneGraph.cpp" />
     <ClCompile Include="src\SceneLoader.cpp" />
     <ClCompile Include="src\SceneLoadingScreen.cpp" />
+    <ClCompile Include="src\SliceTask.cpp" />
     <ClCompile Include="src\SceneNode.cpp" />
     <ClCompile Include="src\SceneRenderSettings.cpp" />
     <ClCompile Include="src\SceneRuntimeData.cpp" />
@@ -541,6 +542,7 @@
     <ClInclude Include="src\SceneGraph.h" />
     <ClInclude Include="src\SceneLoader.h" />
     <ClInclude Include="src\SceneLoadingScreen.h" />
+    <ClInclude Include="src\SliceTask.h" />
     <ClInclude Include="src\SceneNode.h" />
     <ClInclude Include="src\SceneRenderExtras.h" />
     <ClInclude Include="src\SceneRenderSettings.h" />

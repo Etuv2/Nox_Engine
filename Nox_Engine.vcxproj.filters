@@ -723,6 +723,9 @@
     <ClCompile Include="src\SceneLoadingScreen.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="src\SliceTask.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="src\SceneNode.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -1464,6 +1467,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\SceneLoadingScreen.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\SliceTask.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\SceneNode.h">

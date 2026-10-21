@@ -1,4 +1,5 @@
-﻿#include "Scene.h"
+﻿#include "SliceTask.h"
+#include "Scene.h"
 #include "GpuBuffer.h"
 #include "TextureUnits.h"
 #include <glm/gtc/type_ptr.hpp>
@@ -692,6 +693,7 @@ static bool ReadFloatAttribute(
 	}
 
 	for (size_t i = 0; i < acc.count; i++) {
+		if (((i) & 255u) == 0) SliceTask::YieldIfOverBudget();  // slice point inside large vertex loops
 		float values[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
 		const unsigned char* elementPtr = dataPtr + i * stride;
 		for (size_t c = 0; c < numComponents; ++c) {
@@ -737,6 +739,7 @@ static bool ReadUIntAttribute(
 	}
 
 	for (size_t i = 0; i < acc.count; ++i) {
+		if (((i) & 255u) == 0) SliceTask::YieldIfOverBudget();  // slice point inside large vertex loops
 		uint32_t values[4] = { 0u, 0u, 0u, 0u };
 		const unsigned char* elementPtr = dataPtr + i * stride;
 		for (size_t c = 0; c < numComponents; ++c) {
@@ -789,6 +792,7 @@ static void ComputeVertexNormalsFromIndexedTriangles(std::vector<Vertex>& vertic
 
 	if (indices.size() >= 3) {
 		for (size_t i = 0; i + 2 < indices.size(); i += 3) {
+		if (((i/3) & 255u) == 0) SliceTask::YieldIfOverBudget();  // slice point inside large vertex loops
 			const unsigned int i0 = indices[i + 0];
 			const unsigned int i1 = indices[i + 1];
 			const unsigned int i2 = indices[i + 2];
@@ -849,6 +853,7 @@ static bool ReadMat4Attribute(
 	}
 
 	for (size_t i = 0; i < acc.count; ++i) {
+		if (((i) & 255u) == 0) SliceTask::YieldIfOverBudget();  // slice point inside large vertex loops
 		glm::mat4 matrix(1.0f);
 		const unsigned char* elementPtr = dataPtr + i * stride;
 		for (int c = 0; c < 16; ++c) {
@@ -1645,6 +1650,7 @@ bool Scene::LoadFromGLTF(const std::string& path, const std::shared_ptr<Prepared
 			++uniqueTextureLoads;
 			if (!sharedKey.empty()) s_sharedImages[sharedKey] = loadedTexture;
 		}
+		SliceTask::YieldIfOverBudget();  // slice point: the texture is uploaded and cached
 		return loadedTexture;
 	};
 	const auto primitiveBuildStart = Clock::now();
@@ -1653,6 +1659,7 @@ bool Scene::LoadFromGLTF(const std::string& path, const std::shared_ptr<Prepared
 		for (size_t p = 0; p < gltfMesh.primitives.size(); p++) {
 			const tinygltf::Primitive& primitive = gltfMesh.primitives[p];
 			++primitiveCount;
+			SliceTask::YieldIfOverBudget();  // slice point: one primitive at a time
 			if (primitive.attributes.find("POSITION") == primitive.attributes.end()) {
 				// Skip primitive with no position data
 				continue;
@@ -2155,6 +2162,7 @@ bool Scene::LoadFromGLTF(const std::string& path, const std::shared_ptr<Prepared
 			<< " mesh attachment(s) from identity wrapper nodes to transform-carrying ancestors." << std::endl;
 	}
 
+	SliceTask::YieldIfOverBudget();  // slice point before the animation pass
 	// (2) Load animations (if any) from the glTF
 	const auto animationLoadStart = Clock::now();
 	if (!model.animations.empty()) {
@@ -2506,6 +2514,7 @@ void Scene::ComputeTangents(std::vector<Vertex>& vertices,
 
 	// Iterate over each triangle and accumulate tangents
 	for (size_t idx = 0; idx < indices.size(); idx += 3) {
+		if (((idx/3) & 255u) == 0) SliceTask::YieldIfOverBudget();  // slice point inside large vertex loops
 		unsigned int i0 = indices[idx];
 		unsigned int i1 = indices[idx + 1];
 		unsigned int i2 = indices[idx + 2];
@@ -2539,6 +2548,7 @@ void Scene::ComputeTangents(std::vector<Vertex>& vertices,
 
 	// Normalize and orthogonalize tangents, compute handedness (w)
 	for (size_t i = 0; i < vertices.size(); ++i) {
+		if (((i) & 255u) == 0) SliceTask::YieldIfOverBudget();  // slice point inside large vertex loops
 		const glm::vec3 N = glm::dot(vertices[i].normal, vertices[i].normal) > 1e-12f
 			? glm::normalize(vertices[i].normal) : glm::vec3(0.0f, 1.0f, 0.0f);
 		glm::vec3 T = tanSum[i] - N * glm::dot(N, tanSum[i]); // orthonormalize
