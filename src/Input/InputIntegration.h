@@ -53,10 +53,6 @@ public:
     void SetGamepadLookSensitivity(float sensitivity) { m_gamepadLookSensitivity = sensitivity; }
     float GetGamepadLookSensitivity() const { return m_gamepadLookSensitivity; }
     
-    // Configuration
-    bool LoadConfiguration(const std::string& configPath = "config/input_config.json");
-    bool SaveConfiguration(const std::string& configPath = "config/input_config.json");
-    
     // Get access to the underlying input manager
     Input::InputManager* GetInputManager() { return m_inputManager.get(); }
     
@@ -97,7 +93,6 @@ private:
     // State
     bool m_initialized;
     bool m_mouseLocked;
-    std::string m_configPath;
     
     // Settings
     float m_cameraSpeed;

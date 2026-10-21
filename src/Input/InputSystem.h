@@ -184,10 +184,6 @@ public:
     bool IsGamepadButtonHeld(GamepadButton button, int gamepadIndex = 0) const;
     float GetGamepadAxis(GamepadAxis axis, int gamepadIndex = 0) const;
     
-    // Configuration
-    bool LoadConfiguration(const std::string& configPath);
-    bool SaveConfiguration(const std::string& configPath) const;
-    
     // Utility functions
     static std::string KeycodeToString(SDL_Keycode key);
     static SDL_Keycode StringToKeycode(const std::string& keyString);
@@ -259,7 +255,6 @@ private:
     std::vector<std::string> m_contextStack;
     
     // Configuration
-    std::string m_configPath;
 };
 
 } // namespace Input
