@@ -18,6 +18,29 @@ The default profile is `packaging/nox-racing.json`, outputting to `Package/NOX_R
 `-Profile` also accepts a profile JSON path. `-GameScene` replaces the scene list with exactly one
 chosen scene; use a dedicated profile for a multi-scene game.
 
+## Creating a new game
+
+A new project from a template ([engine_overview.md](engine_overview.md#making-a-new-project)) comes with its
+packaging profile, `packaging/<name>.json`, so no packaging file is written by hand:
+
+```powershell
+build\vs2022-x64\Release\Nox_Engine.exe --new-project my_game --template third_person_3d
+tools\package.cmd -Profile my_game -SkipBuild        # Package\my_game\Play.cmd
+Package\my_game\Play.cmd                             # runs the packaged game
+```
+
+The editor's **Build > Package** (and the toolbar Package button) packages the active project with its own
+profile when the open scene belongs to a project; with no project open it packages the default profile
+(`nox-racing`), as before. A project without a profile is reported instead of packaged with someone else's.
+
+The profile's `project` names `projects/<name>/project.json`, its main scene may be a project scene
+(`projects/<name>/scenes/main.json`), and `include` lists the files that Lua loads by path. The packager
+follows scene and descriptor references but cannot see a path that a script builds or passes to
+`ctx:instantiate`, so such files go in `include` (the third-person template lists its coin prefab there).
+Projects must live under `projects/` in the checkout: the engine reads content through the checkout's asset root.
+
+`tests/NewProjectTests.ps1` creates each template, runs it, packages `third_person_3d` and runs the package.
+
 ## Layout
 
 The default layout is `packed` (contract C5 and C2):
