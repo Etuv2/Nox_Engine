@@ -28,6 +28,8 @@
  *   - A Skin structure (joints + inverseBindMatrices) if it's a skinned mesh
  *   - Animations loaded from glTF
  */
+struct PreparedGltf;  // defined in Scene.cpp (holds the parsed tinygltf model)
+
 class Scene {
 public:
     // Mesh data from the glTF file
@@ -71,8 +73,13 @@ public:
     bool hasWeightedSkinData = false;
     bool hasTangents = false;
 
-    // Loads the scene from a glTF file (ASCII or binary), including PBR material textures.
-    bool LoadFromGLTF(const std::string& path);
+    // CPU half of LoadFromGLTF: file read, glTF/GLB parse and image decode. Touches no GL and no Scene state,
+    // so it may run on a worker thread (ModelManager prefetch). Returns nullptr when the file does not load.
+    static std::shared_ptr<PreparedGltf> PrepareGLTF(const std::string& path);
+
+    // Loads the scene from a glTF file (ASCII or binary), including PBR material textures. With a prepared
+    // copy (PrepareGLTF of the same path) the parse is skipped; the GPU build always runs on the calling thread.
+    bool LoadFromGLTF(const std::string& path, const std::shared_ptr<PreparedGltf>& prepared = nullptr);
 
     // Draw all loaded meshes, with no top-level transform
     void Draw();
