@@ -279,6 +279,10 @@ void RegisterAnimator() {
 				return true;
 			}),
 	};
+	// current_state() returns the state name; without this flag Lua sees no value.
+	for (MethodDesc& method : c.methods) {
+		if (method.name == "current_state") method.returnsValue = true;
+	}
 	Registry::Get().Register(std::move(c));
 }
 

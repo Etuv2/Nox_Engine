@@ -12,6 +12,12 @@ local splashes = 0
 local lastState = nil
 
 nox.on("begin_play", function(ctx)
+  -- The single-shark demo frames its shark with the module camera, 4.5 m away (the module owns the camera, so
+  -- a scene camera or automation camera.set does not hold while this project runs).
+  if ctx:find("Shark_00") and not ctx:find("Shark_01") then
+    ctx:camera_look_at(0.0, 1.2, 4.5, 0.0, 0.4, 0.0)
+    ctx:camera_set_fov(40)
+  end
   for i = 0, SHARK_COUNT - 1 do
     local h = ctx:find(string.format("Shark_%02d", i))
     if h then

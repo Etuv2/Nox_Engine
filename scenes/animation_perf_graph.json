@@ -1,15 +1,15 @@
 {
   "camera": {
     "far": 600.0,
-    "fov": 50.0,
+    "fov": 40.0,
     "mouse_sensitivity": 0.1,
     "movement_speed": 10.0,
     "near": 0.1,
-    "pitch": -14.0,
+    "pitch": -12.0,
     "position": [
       0.0,
-      9.0,
-      27.0
+      6.0,
+      20.0
     ],
     "yaw": -90.0
   },
@@ -24,12 +24,13 @@
           "cast_shadows": false,
           "color": [
             1.0,
-            0.95,
+            0.97,
             0.9
           ],
           "enabled": true,
-          "intensity": 6.0,
-          "range": 30.0,
+          "intensity": 40.0,
+          "kind": "point",
+          "range": 60.0,
           "source_radius": 0.0
         }
       },
@@ -37,19 +38,19 @@
         "castsShadows": false,
         "color": [
           1.0,
-          0.95,
+          0.97,
           0.9
         ],
         "enabled": true,
-        "intensity": 6.0,
-        "range": 30.0,
+        "intensity": 40.0,
+        "range": 60.0,
         "type": "point"
       },
       "name": "Key",
       "position": [
         0.0,
-        10.0,
-        8.0
+        6.0,
+        5.0
       ],
       "type": "light"
     },
@@ -68,7 +69,7 @@
       "name": "Shark_00",
       "path": "models\\realistic_shark.glb",
       "position": [
-        -8.0,
+        -5.0,
         0.0,
         -6.0
       ],
@@ -78,9 +79,9 @@
         0.0
       ],
       "scale": [
-        0.1,
-        0.1,
-        0.1
+        0.2,
+        0.2,
+        0.2
       ],
       "type": "model"
     },
@@ -99,7 +100,7 @@
       "name": "Shark_01",
       "path": "models\\realistic_shark.glb",
       "position": [
-        -4.0,
+        -2.5,
         0.0,
         -6.0
       ],
@@ -109,9 +110,9 @@
         0.0
       ],
       "scale": [
-        0.1,
-        0.1,
-        0.1
+        0.2,
+        0.2,
+        0.2
       ],
       "type": "model"
     },
@@ -140,9 +141,9 @@
         0.0
       ],
       "scale": [
-        0.1,
-        0.1,
-        0.1
+        0.2,
+        0.2,
+        0.2
       ],
       "type": "model"
     },
@@ -161,7 +162,7 @@
       "name": "Shark_03",
       "path": "models\\realistic_shark.glb",
       "position": [
-        4.0,
+        2.5,
         0.0,
         -6.0
       ],
@@ -171,9 +172,9 @@
         0.0
       ],
       "scale": [
-        0.1,
-        0.1,
-        0.1
+        0.2,
+        0.2,
+        0.2
       ],
       "type": "model"
     },
@@ -192,7 +193,7 @@
       "name": "Shark_04",
       "path": "models\\realistic_shark.glb",
       "position": [
-        8.0,
+        5.0,
         0.0,
         -6.0
       ],
@@ -202,9 +203,9 @@
         0.0
       ],
       "scale": [
-        0.1,
-        0.1,
-        0.1
+        0.2,
+        0.2,
+        0.2
       ],
       "type": "model"
     },
@@ -223,9 +224,9 @@
       "name": "Shark_05",
       "path": "models\\realistic_shark.glb",
       "position": [
-        -8.0,
+        -5.0,
         0.0,
-        -2.0
+        -3.5
       ],
       "rotation": [
         0.0,
@@ -233,9 +234,9 @@
         0.0
       ],
       "scale": [
-        0.1,
-        0.1,
-        0.1
+        0.2,
+        0.2,
+        0.2
       ],
       "type": "model"
     },
@@ -254,9 +255,9 @@
       "name": "Shark_06",
       "path": "models\\realistic_shark.glb",
       "position": [
-        -4.0,
+        -2.5,
         0.0,
-        -2.0
+        -3.5
       ],
       "rotation": [
         0.0,
@@ -264,9 +265,9 @@
         0.0
       ],
       "scale": [
-        0.1,
-        0.1,
-        0.1
+        0.2,
+        0.2,
+        0.2
       ],
       "type": "model"
     },
@@ -287,7 +288,7 @@
       "position": [
         0.0,
         0.0,
-        -2.0
+        -3.5
       ],
       "rotation": [
         0.0,
@@ -295,9 +296,9 @@
         0.0
       ],
       "scale": [
-        0.1,
-        0.1,
-        0.1
+        0.2,
+        0.2,
+        0.2
       ],
       "type": "model"
     },
@@ -316,9 +317,9 @@
       "name": "Shark_08",
       "path": "models\\realistic_shark.glb",
       "position": [
-        4.0,
+        2.5,
         0.0,
-        -2.0
+        -3.5
       ],
       "rotation": [
         0.0,
@@ -326,9 +327,9 @@
         0.0
       ],
       "scale": [
-        0.1,
-        0.1,
-        0.1
+        0.2,
+        0.2,
+        0.2
       ],
       "type": "model"
     },
@@ -347,9 +348,9 @@
       "name": "Shark_09",
       "path": "models\\realistic_shark.glb",
       "position": [
-        8.0,
+        5.0,
         0.0,
-        -2.0
+        -3.5
       ],
       "rotation": [
         0.0,
@@ -357,9 +358,9 @@
         0.0
       ],
       "scale": [
-        0.1,
-        0.1,
-        0.1
+        0.2,
+        0.2,
+        0.2
       ],
       "type": "model"
     },
@@ -378,9 +379,9 @@
       "name": "Shark_10",
       "path": "models\\realistic_shark.glb",
       "position": [
-        -8.0,
+        -5.0,
         0.0,
-        2.0
+        -1.0
       ],
       "rotation": [
         0.0,
@@ -388,9 +389,9 @@
         0.0
       ],
       "scale": [
-        0.1,
-        0.1,
-        0.1
+        0.2,
+        0.2,
+        0.2
       ],
       "type": "model"
     },
@@ -409,9 +410,9 @@
       "name": "Shark_11",
       "path": "models\\realistic_shark.glb",
       "position": [
-        -4.0,
+        -2.5,
         0.0,
-        2.0
+        -1.0
       ],
       "rotation": [
         0.0,
@@ -419,9 +420,9 @@
         0.0
       ],
       "scale": [
-        0.1,
-        0.1,
-        0.1
+        0.2,
+        0.2,
+        0.2
       ],
       "type": "model"
     },
@@ -442,7 +443,7 @@
       "position": [
         0.0,
         0.0,
-        2.0
+        -1.0
       ],
       "rotation": [
         0.0,
@@ -450,9 +451,9 @@
         0.0
       ],
       "scale": [
-        0.1,
-        0.1,
-        0.1
+        0.2,
+        0.2,
+        0.2
       ],
       "type": "model"
     },
@@ -471,9 +472,9 @@
       "name": "Shark_13",
       "path": "models\\realistic_shark.glb",
       "position": [
-        4.0,
+        2.5,
         0.0,
-        2.0
+        -1.0
       ],
       "rotation": [
         0.0,
@@ -481,9 +482,9 @@
         0.0
       ],
       "scale": [
-        0.1,
-        0.1,
-        0.1
+        0.2,
+        0.2,
+        0.2
       ],
       "type": "model"
     },
@@ -502,9 +503,9 @@
       "name": "Shark_14",
       "path": "models\\realistic_shark.glb",
       "position": [
-        8.0,
+        5.0,
         0.0,
-        2.0
+        -1.0
       ],
       "rotation": [
         0.0,
@@ -512,9 +513,9 @@
         0.0
       ],
       "scale": [
-        0.1,
-        0.1,
-        0.1
+        0.2,
+        0.2,
+        0.2
       ],
       "type": "model"
     },
@@ -533,9 +534,9 @@
       "name": "Shark_15",
       "path": "models\\realistic_shark.glb",
       "position": [
-        -8.0,
+        -5.0,
         0.0,
-        6.0
+        1.5
       ],
       "rotation": [
         0.0,
@@ -543,9 +544,9 @@
         0.0
       ],
       "scale": [
-        0.1,
-        0.1,
-        0.1
+        0.2,
+        0.2,
+        0.2
       ],
       "type": "model"
     },
@@ -564,9 +565,9 @@
       "name": "Shark_16",
       "path": "models\\realistic_shark.glb",
       "position": [
-        -4.0,
+        -2.5,
         0.0,
-        6.0
+        1.5
       ],
       "rotation": [
         0.0,
@@ -574,9 +575,9 @@
         0.0
       ],
       "scale": [
-        0.1,
-        0.1,
-        0.1
+        0.2,
+        0.2,
+        0.2
       ],
       "type": "model"
     },
@@ -597,7 +598,7 @@
       "position": [
         0.0,
         0.0,
-        6.0
+        1.5
       ],
       "rotation": [
         0.0,
@@ -605,9 +606,9 @@
         0.0
       ],
       "scale": [
-        0.1,
-        0.1,
-        0.1
+        0.2,
+        0.2,
+        0.2
       ],
       "type": "model"
     },
@@ -626,9 +627,9 @@
       "name": "Shark_18",
       "path": "models\\realistic_shark.glb",
       "position": [
-        4.0,
+        2.5,
         0.0,
-        6.0
+        1.5
       ],
       "rotation": [
         0.0,
@@ -636,9 +637,9 @@
         0.0
       ],
       "scale": [
-        0.1,
-        0.1,
-        0.1
+        0.2,
+        0.2,
+        0.2
       ],
       "type": "model"
     },
@@ -657,9 +658,9 @@
       "name": "Shark_19",
       "path": "models\\realistic_shark.glb",
       "position": [
-        8.0,
+        5.0,
         0.0,
-        6.0
+        1.5
       ],
       "rotation": [
         0.0,
@@ -667,11 +668,12 @@
         0.0
       ],
       "scale": [
-        0.1,
-        0.1,
-        0.1
+        0.2,
+        0.2,
+        0.2
       ],
       "type": "model"
     }
-  ]
+  ],
+  "skybox": "hdrs\\overcast_sky.hdr"
 }
