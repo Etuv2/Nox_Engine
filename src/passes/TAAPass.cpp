@@ -1,5 +1,6 @@
 #include "TAAPass.h"
 #include "../PresentTarget.h"
+#include "../SceneFrameClock.h"
 #include "../ShaderLoader.h"
 #include "../FrameBuffer.h"
 #include "../ScreenQuad.h"
@@ -234,7 +235,8 @@ void TAAPass::ExecuteResolve(RenderContext& ctx) {
 	}
 
 	ResolveTemporalAntiAliasing(ctx);
-	m_frameIndex++;
+	// The jitter sequence counts live scene frames: loading (overlay) frames must not shift it (sync and async loads).
+	if (nox::SceneFrameClock::live) m_frameIndex++;
 }
 
 glm::mat4 TAAPass::RemoveProjectionJitter(const glm::mat4& projection, const glm::vec2& jitterPixels, const RenderContext& ctx) const {

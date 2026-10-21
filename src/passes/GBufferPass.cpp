@@ -46,6 +46,11 @@ void GBufferPass::Resize(RenderContext& context, int newWidth, int newHeight) {
 // Interior mapping atlas (SceneRenderExtras::interiorAtlas). Sizes come from the atlas data; the
 // engine limits only clamp runaway content (with a warning). The array sampler always gets its own
 // unit so it never aliases a material sampler2D on unit 0, even when no atlas is bound.
+void GBufferPass::PrepareScene(const std::shared_ptr<SceneGraph>& sceneGraph) {
+    if (!sceneGraph) return;
+    UploadInteriorAtlas(sceneGraph->renderExtras.interiorAtlas, sceneGraph->renderExtras.revision);
+}
+
 void GBufferPass::UploadInteriorAtlas(const InteriorAtlas& atlas, uint64_t revision) {
     InteriorGpu& g = m_interior;
     if (g.source != &atlas || g.revision != revision || g.layerCount != atlas.faceLayers.size()) {

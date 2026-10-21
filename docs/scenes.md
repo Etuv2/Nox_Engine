@@ -77,6 +77,11 @@ Where the work runs:
   vertex loops, per light, per road-network node, per child node, and at the section boundaries of a glTF
   load. The GPU uploads run on the main thread (GL context).
   A root node is built only after its models are decoded, so the build never waits on a decoder.
+- Prepare, after the commit and before the loading screen goes away (a slice, `Core::BeginScenePrepare`): the
+  renderer builds the first-use state of the scene's passes (`ModularRenderer::PrepareScene`): the interior atlas,
+  decal and lens-flare texture arrays (`TextureArrayBuilder`, which yields per layer and charges uploads), and the
+  reflection probe captures (one probe per slice step). The first live frame then costs about a normal frame.
+  Overlay and loading frames do not advance the scene's animation or jitter state (`SceneFrameClock::live`).
 - The environment (HDR decode and radiance pass on a worker, cube conversion, mips, IBL passes) runs as its own
   slice, with yields between stages. The GL state is saved across each yield, so frames drawn meanwhile see
   their own state. The IBL passes use a half-float upload and an RGBA16F environment cube (the RGB16F cube's

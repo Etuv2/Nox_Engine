@@ -1,6 +1,7 @@
 #include "LensFlarePass.h"
 #include "ExposurePass.h"
 #include "../PresentTarget.h"
+#include "../SceneFrameClock.h"
 #include "../ComputeShader.h"
 #include "../SceneGraph.h"
 #include "../ShaderLoader.h"
@@ -73,6 +74,13 @@ void LensFlarePass::Resize(RenderContext&, int newWidth, int newHeight)
 	CreateTarget(newWidth, newHeight);
 }
 
+void LensFlarePass::PrepareScene(const std::shared_ptr<SceneGraph>& sceneGraph)
+{
+	if (!sceneGraph) return;
+	const LensFlareSet& flares = sceneGraph->renderExtras.lensFlares;
+	if (!flares.layers.empty()) TextureArrayBuilder::GetOrBuild(flares.layers, flares.textureOptions);
+}
+
 void LensFlarePass::Execute(RenderContext& ctx,
 	const std::shared_ptr<SceneGraph>& sceneGraph,
 	const std::shared_ptr<Camera>&,
@@ -117,6 +125,10 @@ void LensFlarePass::Execute(RenderContext& ctx,
 		m_resetVisibility = true;
 		std::cout << "[LensFlarePass] Uploaded " << m_count << " sources, " << m_styleCount << " styles" << std::endl;
 	}
+
+	// The visibility is smoothed over rendered frames. Loading (overlay) frames are not part of the scene's frame
+	// sequence, so the flares start on the first live frame: sync and async loads then match.
+	if (!nox::SceneFrameClock::live) return;
 
 	// Unjittered projection for the sprites (drawn on the TAA-resolved image); the jittered one for the
 	// depth test, which must match this frame's depth buffer.

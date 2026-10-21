@@ -1,4 +1,5 @@
 #include "ReflectionProbePass.h"
+#include "../SliceTask.h"
 #include "LightClusterPass.h"
 #include "ExposurePass.h"
 #include "../ShaderLoader.h"
@@ -199,6 +200,17 @@ void ReflectionProbePass::Execute(RenderContext& ctx,
 	ctx.reflectionProbeMaxLOD = static_cast<float>(kMipLevels - 1);
 }
 
+void ReflectionProbePass::PrepareScene(RenderContext& ctx, const std::shared_ptr<SceneGraph>& sceneGraph)
+{
+	if (!sceneGraph || sceneGraph->reflectionProbes.empty()) return;
+	if (sceneGraph.get() == m_lastScene && m_framesUntilCapture < 0 && !m_captureActive) return;  // already captured
+	// The capture the first live frame would start, run here as the prepare phase: it yields per probe in a slice.
+	m_lastScene = sceneGraph.get();
+	m_framesUntilCapture = -1;
+	CaptureAll(ctx, sceneGraph, sceneGraph->GetSkybox(), -1.0);
+	m_framesUntilCapture = -1;
+}
+
 void ReflectionProbePass::CaptureAll(RenderContext& ctx, const std::shared_ptr<SceneGraph>& sceneGraph, const std::shared_ptr<Skybox>& skybox, double budgetMs)
 {
 	const auto start = std::chrono::steady_clock::now();
@@ -223,6 +235,7 @@ void ReflectionProbePass::CaptureAll(RenderContext& ctx, const std::shared_ptr<S
 			gpu.SetTextureWrapAxis(m_probeArray, 0, rhi::Wrap::ClampToEdge);
 			gpu.SetTextureWrapAxis(m_probeArray, 1, rhi::Wrap::ClampToEdge);
 			m_capacity = m_probeCount;
+			SliceTask::YieldIfOverBudget();  // slice point: the probe array is a large allocation of its own
 		}
 
 		m_prevFBO = gpu.CurrentDrawFramebuffer();
@@ -245,6 +258,13 @@ void ReflectionProbePass::CaptureAll(RenderContext& ctx, const std::shared_ptr<S
 		CaptureProbe(ctx, m_captureScene, m_captureSkybox, probes[static_cast<size_t>(m_nextProbe)], m_nextProbe);
 		PrefilterInto(m_nextProbe);
 		++m_nextProbe;
+		// In a load slice (the prepare phase) the capture yields to the frame once its budget is spent, with the GL
+		// state kept for the capture. Outside a slice this does nothing.
+		if (SliceTask::InTask() && m_nextProbe < m_probeCount) {
+			const rhi::StateSnapshot snapshot = gpu.CaptureState();
+			SliceTask::YieldIfOverBudget();
+			gpu.RestoreState(snapshot);
+		}
 		if (!unlimited && std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count() >= budgetMs) {
 			break;
 		}

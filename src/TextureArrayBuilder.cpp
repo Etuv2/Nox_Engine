@@ -1,6 +1,7 @@
 #include "TextureArrayBuilder.h"
 #include "stb_image.h"
 #include "assets/AssetIOImage.h"
+#include "SliceTask.h"
 
 #include <algorithm>
 #include <array>
@@ -203,9 +204,10 @@ namespace {
 				return EncodeMips(Resample(*img, rect, size), levels);
 			}));
 		}
+		// The waits yield to the frame inside a scene slice (the prepare phase), so the workers' time is not a frame.
 		std::vector<std::vector<std::vector<uint8_t>>> data;
 		for (size_t i = 0; i < encoded.size(); ++i) {
-			data.push_back(encoded[i].get());
+			data.push_back(SliceTask::AwaitYielding(std::move(encoded[i])));
 			if (data.back().empty()) {
 				std::cerr << "[TextureArrayBuilder] " << o.debugName << ": cannot read " << layers[i].file << std::endl;
 				return rhi::TextureHandle{};
@@ -222,7 +224,9 @@ namespace {
 		desc.mipLevels = levels;
 		desc.immutable = true;   // fixed storage (glTexStorage3D)
 		const rhi::TextureHandle tex = gpu.CreateTexture(desc);
+	SliceTask::YieldIfOverBudget();  // slice point: the immutable storage is a large allocation of its own
 		for (size_t layer = 0; layer < data.size(); ++layer) {
+			size_t layerBytes = 0;
 			for (int l = 0; l < levels; ++l) {
 				const int s = std::max(size >> l, 1);
 				rhi::TextureRegion region;
@@ -230,7 +234,11 @@ namespace {
 				region.offset = glm::ivec3(0, 0, static_cast<int>(layer));
 				region.extent = glm::ivec3(s, s, 1);
 				gpu.UpdateTexture(tex, region, rhi::PixelFormat::RGBA, rhi::PixelType::UByte, data[layer][l].data(), 1);
+				layerBytes += data[layer][l].size();
 			}
+			// One layer per slice step: the upload budget (SliceTask::ChargeUpload) spreads the layers over frames.
+			SliceTask::ChargeUpload(layerBytes);
+			SliceTask::YieldIfOverBudget();
 		}
 		gpu.SetTextureFilter(tex, rhi::Filter::LinearMipLinear, rhi::Filter::Linear);
 		gpu.SetTextureWrapAxis(tex, 0, rhi::Wrap::ClampToEdge);

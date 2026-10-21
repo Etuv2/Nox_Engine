@@ -1,4 +1,5 @@
 #include "Core.h"
+#include <future>
 #include "automation/AutomationServer.h"
 #include "BenchmarkRunner.h"
 #include "CameraPath.h"
@@ -1566,7 +1567,26 @@ void Core::OnWindowResize(int newWidth, int newHeight) {
 }
 
 bool Core::IsSceneLoading() const {
-	return (m_sceneLoader && m_sceneLoader->GetLoadStatus() == SceneLoader::LoadStatus::Running) || m_commitTask != nullptr;
+	return (m_sceneLoader && m_sceneLoader->GetLoadStatus() == SceneLoader::LoadStatus::Running) || m_commitTask != nullptr ||
+		m_prepareTask != nullptr;
+}
+
+// Prepare phase: after the commit, the renderer builds the first-use state of the scene's passes (texture arrays, the
+// interior atlas, decal and flare sources) as a slice, so the first live frame does not pay for it. Uploads go through
+// the frame's upload budget. Without a renderer (no GL) there is nothing to prepare.
+void Core::BeginScenePrepare(double budgetMs)
+{
+	if (!m_modularRenderer || !m_sceneGraph) {
+		m_scenePresentPending = true;
+		return;
+	}
+	m_prepareTask = std::make_unique<SliceTask>([this] {
+		m_modularRenderer->PrepareScene(m_sceneGraph);
+	});
+	if (m_prepareTask->Resume(budgetMs)) {
+		m_prepareTask.reset();
+		m_scenePresentPending = true;
+	}
 }
 
 void Core::SwapScene(const std::string& newSceneFile) {
@@ -1601,7 +1621,7 @@ void Core::FinishSceneLoadSynchronously() {
 	if (!m_sceneLoader) return;
 	m_sceneLoader->StepLoad(-1.0);
 	ServiceSceneLoad(-1.0);
-	while (m_commitTask) {
+	while (m_commitTask || m_prepareTask) {
 		ServiceSceneLoad(-1.0);
 	}
 }
@@ -1615,6 +1635,14 @@ void Core::ServiceSceneLoad(double budgetMs) {
 	if (m_commitTask) {
 		if (m_commitTask->Resume(budgetMs)) {
 			m_commitTask.reset();
+			BeginScenePrepare(budgetMs);
+		}
+		return;
+	}
+	// Prepare in progress: the renderer's first-use setup for the committed scene.
+	if (m_prepareTask) {
+		if (m_prepareTask->Resume(budgetMs)) {
+			m_prepareTask.reset();
 			m_scenePresentPending = true;  // the loading screen stays up until the first frame of the new scene
 		}
 		return;
@@ -1633,7 +1661,7 @@ void Core::ServiceSceneLoad(double budgetMs) {
 		});
 		if (m_commitTask->Resume(budgetMs)) {
 			m_commitTask.reset();
-			m_scenePresentPending = true;
+			BeginScenePrepare(budgetMs);
 		}
 	}
 	else if (status == SceneLoader::LoadStatus::Failed) {
@@ -1841,6 +1869,11 @@ void Core::RenderSceneLoadingUI(bool overlay) {
 		// The commit covers the last 10% of the bar, one step at a time.
 		state.progress = CommitProgress();
 		state.stage = m_commitStage;
+	}
+	else if (m_prepareTask) {
+		// The renderer's prepare covers the bar from the end of the commit to the first frame.
+		state.progress = 0.95f;
+		state.stage = "Preparing the renderer";
 	}
 	else if (IsSceneLoading()) {
 		state.progress = progress.fraction * 0.9f;
@@ -2415,8 +2448,12 @@ std::vector<std::string> Core::GetSceneList() const
 
 void Core::ConfigureGameFromScene(const std::string& scenePath)
 {
-	const auto text = AssetIO::ReadText(scenePath);
-	m_sceneRootJson = text ? json::parse(*text, nullptr, false) : json();
+	// The authored file is read and parsed on a worker; inside a load slice the wait yields to the frame (a large
+	// scene's JSON is tens of ms of parsing).
+	m_sceneRootJson = SliceTask::AwaitYielding(std::async(std::launch::async, [scenePath] {
+		const auto text = AssetIO::ReadText(scenePath);
+		return text ? json::parse(*text, nullptr, false) : json();
+	}));
 	if (!m_sceneRootJson.is_object()) m_sceneRootJson = json::object();
 	m_authoredGame = m_sceneRootJson.value("game", json());
 	m_playing = false;
