@@ -543,6 +543,9 @@
     <ClCompile Include="src\ImGui\PerformanceWindow.cpp">
       <Filter>Source Files\ImGui</Filter>
     </ClCompile>
+    <ClCompile Include="src\ImGui\InputActionsWindow.cpp">
+      <Filter>Source Files\ImGui</Filter>
+    </ClCompile>
     <ClCompile Include="src\ImGui\PhysicsWindow.cpp">
       <Filter>Source Files\ImGui</Filter>
     </ClCompile>
@@ -867,6 +870,9 @@
     <ClCompile Include="src\editor\InspectorUndo.cpp">
       <Filter>Source Files\editor</Filter>
     </ClCompile>
+    <ClCompile Include="src\editor\InputActionsModel.cpp">
+      <Filter>Source Files\editor</Filter>
+    </ClCompile>
     <ClCompile Include="src\editor\Selection.cpp">
       <Filter>Source Files\editor</Filter>
     </ClCompile>
@@ -997,6 +1003,9 @@
       <Filter>Header Files\editor</Filter>
     </ClInclude>
     <ClInclude Include="src\editor\InspectorUndo.h">
+      <Filter>Header Files\editor</Filter>
+    </ClInclude>
+    <ClInclude Include="src\editor\InputActionsModel.h">
       <Filter>Header Files\editor</Filter>
     </ClInclude>
     <ClInclude Include="src\editor\Selection.h">
@@ -1281,6 +1290,9 @@
       <Filter>Header Files\ImGui</Filter>
     </ClInclude>
     <ClInclude Include="src\ImGui\PerformanceWindow.h">
+      <Filter>Header Files\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ImGui\InputActionsWindow.h">
       <Filter>Header Files\ImGui</Filter>
     </ClInclude>
     <ClInclude Include="src\ImGui\PhysicsWindow.h">
@@ -1762,7 +1774,7 @@
     <None Include="scenes\animation_test.json">
       <Filter>Source Files\misc\scenes</Filter>
     </None>
-    <None Include="config\input_config.json">
+    <None Include="config\editor_input.json">
       <Filter>Source Files\misc\configs</Filter>
     </None>
     <None Include=".gitattributes">
