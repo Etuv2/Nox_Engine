@@ -21,6 +21,7 @@
 #include <glm/glm.hpp>
 #include <map>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <unordered_map>
@@ -135,6 +136,13 @@ namespace NoxLua {
 		// Queues a host-raised event (physics events, LuaPhysics.cpp) with a registry ref of its payload. Ownership of
 		// payloadRef passes to the world; false when the queue is full (the caller releases the ref).
 		bool QueueNativeEvent(const std::string& name, int payloadRef) { return QueueEvent(name, payloadRef); }
+		// Plain data handed over by ctx:load_scene(path, payload) to the scene that loads next. Set by LuaGameModule when it
+		// configures the world; passed to begin_play (second argument) and returned by ctx:scene_payload().
+		void SetScenePayload(std::optional<nlohmann::json> payload) { m_scenePayload = std::move(payload); }
+		bool HasScenePayload() const { return m_scenePayload.has_value(); }
+		bool Playing() const { return m_playing; }
+		// The scene payload as plain JSON (nullptr when none). Ctx:scene_payload() pushes a copy.
+		const nlohmann::json* ScenePayloadPtr() const { return m_scenePayload ? &*m_scenePayload : nullptr; }
 
 		// Draw handlers (nox.on_draw, docs/lua_api.md "UI"). Runs every handler with (ctx, ui, dt) into `out`
 		// (cleared first). Draw handlers may read the world; world writes they queue are discarded with a warning.
@@ -236,6 +244,10 @@ namespace NoxLua {
 		static constexpr size_t kMaxDiagnostics = 256;
 		static constexpr size_t kMaxSpawnedPerPlay = 4096;
 		static constexpr size_t kMaxEventsPerFrame = 10000;
+		static constexpr size_t kMaxTasks = 4096;   // live timers and coroutines
+		bool TasksFull() const { return m_tasks.size() >= kMaxTasks; }
+		// True while the host resumes a coroutine (ctx:wait* are valid only then).
+		bool InCoroutineSegment() const { return m_resumeDepth > 0; }
 
 	private:
 		friend struct LuaApiBinder;   // C entry points of the nox API (LuaWorld.cpp)
@@ -251,8 +263,33 @@ namespace NoxLua {
 		};
 		struct BehaviorEntry {
 			std::string name;
-			int ref = 0;
+			int ref = 0;          // update(ctx, entity, dt); 0 when absent
+			int fixedRef = 0;     // fixed_update(ctx, entity, dt)
+			int startRef = 0;     // on_start(ctx, entity), once per entity
+			int destroyRef = 0;   // on_destroy(ctx, entity), once per started entity
 			bool faulted = false;
+		};
+		// Timers and coroutines (ctx:after, ctx:every, ctx:start_coroutine). Both are driven by the host from Update.
+		struct Task {
+			enum class Kind { Timer, Coroutine };
+			enum class Wait { None, Time, Frames, Until };
+			Kind kind = Kind::Timer;
+			uint64_t id = 0;
+			std::string label;              // diagnostics
+			EntityHandle entity;            // scope (valid when hasEntity)
+			bool hasEntity = false;
+			bool cancelled = false;         // removed by the next sweep (references are released there)
+			// Timer: due time on the play clock; interval > 0 repeats.
+			double due = 0.0;
+			double interval = 0.0;
+			int ref = 0;                    // timer callback, or the coroutine's thread (registry reference)
+			// Coroutine state.
+			lua_State* thread = nullptr;
+			bool started = false;
+			Wait wait = Wait::None;
+			double until = 0.0;
+			int64_t framesLeft = 0;
+			int predicateRef = 0;           // wait_until predicate
 		};
 		struct HandlerEntry {
 			int ref = 0;
@@ -276,7 +313,29 @@ namespace NoxLua {
 		bool DetachBehavior(const EntityHandle& handle, const std::string& behavior);
 		bool HasBehavior(const std::string& name) const;
 		void AddSystem(const std::string& name, int order, int ref, bool fixed);
-		void AddBehavior(const std::string& name, int ref);
+		struct BehaviorRefs {
+			int update = 0;
+			int fixed = 0;
+			int start = 0;
+			int destroy = 0;
+		};
+		void AddBehavior(const std::string& name, const BehaviorRefs& refs);
+		int FindBehavior(const std::string& name) const;
+		// Creates a timer or coroutine task; returns its id (0 when the limit is reached).
+		uint64_t AddTask(Task task);
+		Task* FindTask(uint64_t id);
+		void CancelTasksOf(const EntityHandle& handle);
+		void RunTimers();
+		void RunCoroutines();
+		void ResumeCoroutine(size_t index);
+		void ReleaseTask(Task& task);
+		void SweepTasks();
+		void RunBehaviorPhase(bool fixed, float dt);
+		bool EnsureStarted(size_t behavior, const EntityHandle& target);
+		// Runs on_destroy for the started behaviours of a live entity and cancels its tasks. Called before the entity is destroyed.
+		void EntityGoing(const EntityHandle& handle);
+		void CollectSubtree(const std::shared_ptr<SceneNode>& node, std::vector<EntityHandle>& out) const;
+		bool Live(const EntityHandle& handle) const;
 		void AddHandler(const std::string& eventName, int ref);
 		void AddDrawHandler(int ref);
 		void AddConfigureHook(int ref) { m_configureRef = ref; }
@@ -338,6 +397,12 @@ namespace NoxLua {
 		std::map<std::string, std::vector<HandlerEntry>> m_handlers;
 		std::vector<PendingEvent> m_events;
 		size_t m_sequence = 0;
+		std::vector<Task> m_tasks;                                   // timers and coroutines, in creation order
+		uint64_t m_nextTaskId = 1;
+		int m_resumeDepth = 0;                                       // > 0 while a coroutine segment runs
+		// Behaviours that ran on_start for an entity (per entity lifetime; cleared when the entity goes away).
+		std::map<EntityHandle, std::set<std::string>> m_started;
+		std::optional<nlohmann::json> m_scenePayload;
 
 		// Declared data and behavior attachments keyed by checked identity (ordered by id).
 		std::map<EntityHandle, SchemaMap> m_data;
