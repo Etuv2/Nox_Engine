@@ -31,6 +31,12 @@ uniform int uUseVelocity = 0;
 uniform float uHistoryWeight = 0.85;
 uniform float uLightingChangeFactor = 0.0;
 uniform float uMotionRejectPixels = 6.0;
+// Edge-aware resolve (plan section 24): plane-distance geometry test in world space, validity of each tap (an
+// empty gather texel is no data, not black), renormalised over valid taps, and a 3x3 valid-neighbour estimate
+// when the 2x2 taps are all empty. 0 keeps the depth-only joint bilateral of section 18.
+uniform int uEdgeAwareUpsample = 0;
+uniform mat4 uInvProjection;
+uniform mat4 uInvView;
 
 float SurfelUpscaleDepthWeight(float centerDepth, float sampleDepth)
 {
@@ -44,6 +50,23 @@ float SurfelUpscaleDepthWeight(float centerDepth, float sampleDepth)
 float SurfelUpscaleNormalWeight(vec3 centerNormal, vec3 sampleNormal)
 {
     return smoothstep(0.32, 0.93, max(dot(centerNormal, sampleNormal), 0.0));
+}
+
+// A gather texel carries data when it has coverage or irradiance. The gather writes exactly zero for texels with
+// no surfel and no cell average; those are no data and must not pull the upsample toward black.
+bool GatherTexelHasData(vec4 value)
+{
+    return value.a > 1e-4 || SurfelLuminance(max(value.rgb, vec3(0.0))) > 1e-6;
+}
+
+// Plane-distance weight: distance of a tap's surface from the receiver's tangent plane, relative to the
+// distance from the camera (so the tolerance tracks the depth precision of the gather footprint).
+float SurfelUpscalePlaneWeight(vec3 centerPos, vec3 centerNormal, vec3 samplePos, float cameraDistance)
+{
+    float planeDistance = abs(dot(samplePos - centerPos, centerNormal));
+    float tolerance = 0.02 * cameraDistance + 0.005;
+    float t = planeDistance / tolerance;
+    return exp(-0.5 * t * t);
 }
 
 void main()
@@ -78,6 +101,65 @@ void main()
     ivec2 base = ivec2(floor(lowCoord));
     vec2 frac = lowCoord - vec2(base);
 
+    vec4 resolved = vec4(0.0);
+    if (uEdgeAwareUpsample != 0) {
+        // Edge-aware resolve. Taps with no data are excluded from the weighted sum (renormalised over the rest).
+        vec3 centerPos = SurfelReconstructWorldPosition(fullUV, centerDepth, uInvProjection, uInvView);
+        float cameraDistance = length(centerPos - (uInvView * vec4(0.0, 0.0, 0.0, 1.0)).xyz);
+        vec4 sum = vec4(0.0);
+        float weightSum = 0.0;
+        vec4 validSum = vec4(0.0);
+        float validWeightSum = 0.0;
+        for (int k = 0; k < 4; ++k) {
+            ivec2 offset = ivec2(k & 1, k >> 1);
+            ivec2 lowTexel = clamp(base + offset, ivec2(0), safeLow - ivec2(1));
+            float bilinear = (offset.x == 0 ? 1.0 - frac.x : frac.x) * (offset.y == 0 ? 1.0 - frac.y : frac.y);
+            vec4 sampleValue = texelFetch(uLowResIndirectTex, lowTexel, 0);
+            vec4 clampedValue = vec4(max(sampleValue.rgb, vec3(0.0)), clamp(sampleValue.a, 0.0, 1.0));
+            bool hasData = GatherTexelHasData(sampleValue);
+            ivec2 samplePixel = ivec2(clamp(
+                floor((vec2(lowTexel) + vec2(0.5)) / scale),
+                vec2(0.0),
+                vec2(safeResolution - uvec2(1u))));
+            float sampleDepth = texelFetch(uDepthTex, samplePixel, 0).r;
+            if (hasData) {
+                validSum += clampedValue * bilinear;
+                validWeightSum += bilinear;
+            }
+            if (!hasData || sampleDepth <= 0.0 || sampleDepth >= 0.999999) {
+                continue;
+            }
+            vec3 sampleNormal = SurfelSafeNormalize(DecodeNormalOct(texelFetch(uPackedNormalRMTex, samplePixel, 0).rg));
+            vec2 sampleUV = (vec2(samplePixel) + vec2(0.5)) / vec2(safeResolution);
+            vec3 samplePos = SurfelReconstructWorldPosition(sampleUV, sampleDepth, uInvProjection, uInvView);
+            float w = bilinear * SurfelUpscaleNormalWeight(centerNormal, sampleNormal) *
+                SurfelUpscalePlaneWeight(centerPos, centerNormal, samplePos, cameraDistance);
+            sum += clampedValue * w;
+            weightSum += w;
+        }
+        if (weightSum > 1e-4) {
+            resolved = sum / weightSum;
+        } else if (validWeightSum > 1e-5) {
+            // No tap on this surface: the valid taps, unweighted by geometry (no hole).
+            resolved = validSum / validWeightSum;
+        } else {
+            // Every 2x2 tap is empty: average the valid texels of the surrounding 4x4 gather neighbourhood.
+            ivec2 centre = base;
+            vec4 neighbourSum = vec4(0.0);
+            float neighbourCount = 0.0;
+            for (int y = -1; y <= 2; ++y) {
+                for (int x = -1; x <= 2; ++x) {
+                    ivec2 t = clamp(centre + ivec2(x, y), ivec2(0), safeLow - ivec2(1));
+                    vec4 v = texelFetch(uLowResIndirectTex, t, 0);
+                    if (GatherTexelHasData(v)) {
+                        neighbourSum += vec4(max(v.rgb, vec3(0.0)), clamp(v.a, 0.0, 1.0));
+                        neighbourCount += 1.0;
+                    }
+                }
+            }
+            resolved = neighbourCount > 0.0 ? neighbourSum / neighbourCount : vec4(0.0);
+        }
+    } else {
     vec4 sum = vec4(0.0);
     float weightSum = 0.0;
     vec4 bilinearSum = vec4(0.0);
@@ -107,9 +189,10 @@ void main()
     }
 
     // When no tap shares the receiver's surface, fall back to plain bilinear rather than a hole.
-    vec4 resolved = weightSum > 1e-4
+    resolved = weightSum > 1e-4
         ? sum / weightSum
         : (bilinearWeightSum > 1e-5 ? bilinearSum / bilinearWeightSum : vec4(0.0));
+    }
     resolved.rgb = max(resolved.rgb, vec3(0.0));
     resolved.a = clamp(resolved.a, 0.0, 1.0);
 

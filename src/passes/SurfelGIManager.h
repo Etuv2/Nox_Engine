@@ -197,6 +197,9 @@ struct SurfelGISettings {
 	// Cell-average fallback interpolated from the 8 corner cells of the receiver's position (true) or the base cell's
 	// constant (false, the GIBS form). Plan section 21.
 	bool gatherSmoothFallback = true;
+	// Edge-aware resolve of the half-resolution gather (plan section 24): plane-distance and normal weights,
+	// empty gather texels excluded, neighbourhood estimate when all 2x2 taps are empty. false = section 18 resolve.
+	bool gatherEdgeAwareUpsample = true;
 	// Stochastic per-cell gather (plan section 21, round 2): samples per cell in the window, hashed start per pixel and frame.
 	bool gatherStochastic = false;
 	uint32_t gatherPerCellSamples = 2u;

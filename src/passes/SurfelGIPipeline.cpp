@@ -1949,6 +1949,9 @@ void SurfelGIPipeline::ApplyIndependentReference(RenderContext& context)
 	SetUniform2ui(upscaleProgram, "uResolution", m_width, m_height);
 	SetUniform2ui(upscaleProgram, "uLowResolution", ReferenceExtent(m_width), ReferenceExtent(m_height));
 	SetUniform1ui(upscaleProgram, "uDebugView", 0u);
+	// The reference keeps the depth-only resolve and no history: its alpha is not a surfel coverage.
+	SetUniform1i(upscaleProgram, "uEdgeAwareUpsample", 0);
+	SetUniform1i(upscaleProgram, "uUseHistory", 0);
 	gpu.BindImage(1, m_resources.historyIndirectTexture[0], 0, false, 0, rhi::ImageAccess::WriteOnly, rhi::Format::RGBA16F);
 	m_upscaleFilterShader->Dispatch(DivRoundUp(m_width, 8u), DivRoundUp(m_height, 8u), 1u);
 	m_upscaleFilterShader->WaitForCompletion(rhi::BarrierImageAccess | rhi::BarrierTextureFetch);
@@ -2061,6 +2064,9 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 	SetUniform1i(upscaleProgram, "uUseVelocity", context.velocityTex.IsValid() ? 1 : 0);
 	SetUniform1f(upscaleProgram, "uHistoryWeight", 0.85f);
 	SetUniform1f(upscaleProgram, "uMotionRejectPixels", 6.0f);
+	SetUniform1i(upscaleProgram, "uEdgeAwareUpsample", m_settings.gatherEdgeAwareUpsample ? 1 : 0);
+	SetUniformMat4(upscaleProgram, "uInvProjection", glm::inverse(context.proj));
+	SetUniformMat4(upscaleProgram, "uInvView", glm::inverse(context.view));
 	SetUniform1f(upscaleProgram, "uLightingChangeFactor", m_lightingChangeFactor);
 	timedDispatch("upscale_filter", [&]() {
 		m_upscaleFilterShader->Dispatch(DivRoundUp(m_width, 8u), DivRoundUp(m_height, 8u), 1u);
