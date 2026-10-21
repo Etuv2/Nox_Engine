@@ -3,6 +3,7 @@
 
 #include "LuaEditorPanel.h"
 #include "LuaEditorSupport.h"
+#include "LuaScene.h"
 #include "../Camera.h"
 #include "../EditorExtensions.h"
 #include "../PhysicsEngine.h"
@@ -190,8 +191,11 @@ namespace NoxLua {
 		ClearSubsteps();
 		m_docs.game = game;
 		m_docs.root = sceneRoot;
+		// A scene loaded by ctx:load_scene(path, payload) takes its payload here; any other configuration takes none.
+		std::optional<nlohmann::json> payload = TakePendingScenePayload();
 		StageOutcome outcome = StageWorld(m_limits, *m_files, m_descriptor.content, scene, m_authoredEntities, nullptr, &m_docs);
 		m_world = std::move(outcome.world);
+		if (m_world) m_world->SetScenePayload(std::move(payload));
 		m_available = outcome.ok;
 		m_stamps = outcome.ok ? outcome.stamps : std::vector<ModuleStamp>();
 		AttachResources(m_world.get());
@@ -269,9 +273,12 @@ namespace NoxLua {
 		// Swap. The old world releases its registry references in its destructor, then its VM closes.
 		// No initializer or begin_play runs: the candidate continues from the imported declared state.
 		const bool wantsPointer = m_world ? m_world->WantsPointer() : true;
+		std::optional<nlohmann::json> payload;   // the scene payload belongs to the scene, not to its code: it carries over
+		if (m_world && m_world->ScenePayloadPtr()) payload = *m_world->ScenePayloadPtr();
 		std::unique_ptr<LuaWorld> previous = std::move(m_world);
 		m_world = std::move(outcome.world);
 		m_world->SetWantsPointer(wantsPointer);
+		m_world->SetScenePayload(std::move(payload));
 		// (the candidate's nox.on_configure already ran during staging)
 		AttachResources(m_world.get());
 		// Running vehicles move into the candidate (controllers rebound to its VM, declared state restored) before the

@@ -5,12 +5,14 @@
 #include "../SceneGraph.h"
 #include "../SceneNode.h"
 #include "../reflect/ReflectServices.h"
+#include "LuaScene.h"
 #include "LuaWorld.h"
 #include "lauxlib.h"
 #include "lua.h"
 
 #include <cmath>
 #include <cstring>
+#include <optional>
 #include <set>
 #include <sstream>
 
@@ -578,15 +580,23 @@ namespace NoxLua {
 			return true;
 		}
 
-		// ctx:load_scene(path): switches scene at the next frame boundary (the host performs the swap).
+		// ctx:load_scene(path [, payload]): switches scene at the next frame boundary (the host performs the swap).
+		// The payload is plain data, copied to JSON now; the next scene's begin_play receives it (LuaScene.h).
 		int CtxLoadScene(lua_State* L) {
 			LuaWorld* w = WorldOf(L);
 			RequireWritable(L, w);
 			const std::string path = luaL_checkstring(L, 2);
 			std::string error;
 			if (!ValidScenePath(path, error)) return luaL_argerror(L, 2, error.c_str());
+			std::optional<nlohmann::json> payload;
+			if (!lua_isnoneornil(L, 3)) {
+				nlohmann::json value;
+				if (!LuaValueToJson(L, 3, value, error)) return luaL_argerror(L, 3, ("payload: " + error).c_str());
+				payload = std::move(value);
+			}
 			const nox::reflect::EngineServices& services = nox::reflect::Services();
 			if (!services.requestSceneSwap) return luaL_error(L, "load_scene: scene switching is not available in this host");
+			SetPendingScenePayload(std::move(payload));
 			services.requestSceneSwap(path);
 			return 0;
 		}
