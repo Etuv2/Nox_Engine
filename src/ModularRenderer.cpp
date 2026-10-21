@@ -762,6 +762,8 @@ void ModularRenderer::SyncSurfelGISettings()
 			std::clamp(GetEnvVarInt("NOX_SURFEL_GI_CACHE_ALBEDO_CANDIDATES", static_cast<int>(settings.cacheAlbedoCandidates)), 1, 128));
 		settings.cacheAlbedoPerCell = static_cast<uint32_t>(
 			std::clamp(GetEnvVarInt("NOX_SURFEL_GI_CACHE_ALBEDO_PER_CELL", static_cast<int>(settings.cacheAlbedoPerCell)), 1, 8));
+		settings.cacheOwnCellOnly = static_cast<uint32_t>(
+			std::clamp(GetEnvVarInt("NOX_SURFEL_GI_CACHE_OWN_CELL", static_cast<int>(settings.cacheOwnCellOnly)), 0, 1));
 		settings.biasProbeStride = static_cast<uint32_t>(std::max(GetEnvVarInt("NOX_SURFEL_GI_BIAS_PROBE", 0), 0));
 		settings.biasProbeInterval = static_cast<uint32_t>(
 			std::clamp(GetEnvVarInt("NOX_SURFEL_GI_BIAS_PROBE_INTERVAL", static_cast<int>(settings.biasProbeInterval)), 1, 100000));

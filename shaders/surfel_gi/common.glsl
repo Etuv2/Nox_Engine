@@ -845,19 +845,10 @@ ivec3 SurfelOrderedCubeOffset(uint index)
         return ivec3(0, 0, 0);
     }
 
+    // Closed form of the ordered walk over the 26 non-centre raw offsets (the centre is raw 13). Same order as before.
     uint target = min(index - 1u, 25u);
-    uint seen = 0u;
-    for (uint raw = 0u; raw < 27u; ++raw) {
-        ivec3 offset = SurfelRawCubeNeighborOffset(raw);
-        if (all(equal(offset, ivec3(0)))) {
-            continue;
-        }
-        if (seen == target) {
-            return offset;
-        }
-        ++seen;
-    }
-    return ivec3(1, 1, 1);
+    uint raw = target < 13u ? target : target + 1u;
+    return SurfelRawCubeNeighborOffset(raw);
 }
 
 ivec3 SurfelCubeNeighborOffset(uint index)
@@ -880,19 +871,10 @@ ivec3 SurfelOrderedCubeRadius2Offset(uint index)
         return ivec3(0, 0, 0);
     }
 
+    // Closed form of the ordered walk over the 124 non-centre raw offsets (the centre is raw 62). Same order as before.
     uint target = min(index - 1u, 123u);
-    uint seen = 0u;
-    for (uint raw = 0u; raw < 125u; ++raw) {
-        ivec3 offset = SurfelRawCubeRadius2NeighborOffset(raw);
-        if (all(equal(offset, ivec3(0)))) {
-            continue;
-        }
-        if (seen == target) {
-            return offset;
-        }
-        ++seen;
-    }
-    return ivec3(2, 2, 2);
+    uint raw = target < 62u ? target : target + 1u;
+    return SurfelRawCubeRadius2NeighborOffset(raw);
 }
 
 ivec3 SurfelCubeRadius2NeighborOffset(uint index)
