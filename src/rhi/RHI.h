@@ -344,6 +344,9 @@ namespace rhi {
 		// --- Device / window -------------------------------------------------------------------------
 		virtual const DeviceInfo& Info() const = 0;
 		virtual const DeviceLimits& Limits() const = 0;
+		// Live objects this device created and has not destroyed. Leak checks read them (engine.info "gpu_objects").
+		struct LiveObjectCounts { size_t buffers = 0, textures = 0, vertexInputs = 0, programs = 0; };
+		virtual LiveObjectCounts LiveObjects() const { return {}; }
 		virtual void Present() = 0;                         // swap the window's back buffer
 		virtual void SetVSync(bool enabled) = 0;
 		virtual const char* PollError() = 0;                // nullptr when no error is pending

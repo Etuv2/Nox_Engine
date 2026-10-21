@@ -4,6 +4,7 @@
 
 #include <glm/gtc/matrix_transform.hpp>
 
+#include <iterator>
 #include <map>
 #include <string>
 
@@ -37,6 +38,14 @@ std::shared_ptr<const CollisionWorld> LoadShared(const std::string& path, const 
 
 void ClearCache() {
 	Cache().clear();
+}
+
+void Invalidate(const std::string& path) {
+	auto& cache = Cache();
+	for (auto it = cache.begin(); it != cache.end();) {
+		const bool same = it->first == path || it->first.compare(0, path.size() + 1, path + "|") == 0;
+		it = same ? cache.erase(it) : std::next(it);
+	}
 }
 
 bool LocalBounds(const CollisionWorld& mesh, glm::vec3& mn, glm::vec3& mx) {

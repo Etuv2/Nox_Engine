@@ -283,6 +283,7 @@
     <ClCompile Include="src\LightNode.cpp" />
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\MainWindow.cpp" />
+    <ClCompile Include="src\ModelHotReload.cpp" />
     <ClCompile Include="src\ModelManager.cpp" />
     <ClCompile Include="src\ModularRenderer.cpp" />
     <ClCompile Include="src\passes\BloomPass.cpp" />
@@ -502,6 +503,7 @@
     <ClInclude Include="src\MainWindow.h" />
     <ClInclude Include="src\MDIBatch.h" />
     <ClInclude Include="src\MeshComponent.h" />
+    <ClInclude Include="src\ModelHotReload.h" />
     <ClInclude Include="src\ModelManager.h" />
     <ClInclude Include="src\ModularRenderer.h" />
     <ClInclude Include="src\NightStreetPacks.h" />

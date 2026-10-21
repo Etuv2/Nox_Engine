@@ -588,6 +588,9 @@
     <ClCompile Include="src\MainWindow.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="src\ModelHotReload.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="src\ModelManager.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -1377,6 +1380,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\MeshComponent.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ModelHotReload.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\ModelManager.h">

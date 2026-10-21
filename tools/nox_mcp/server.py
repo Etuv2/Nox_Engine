@@ -255,6 +255,11 @@ COMMAND_TOOLS = [
     ("render_reload_shaders", "render.reload_shaders",
      "Recompile every shader program made from files, and the surfel GI shaders, from disk (the editor's Ctrl+Shift+R). "
      "A program that fails keeps its previous version. Returns {reloaded, kept, stale, errors[]}.", obj()),
+    ("assets_reload", "assets.reload",
+     "Decode loaded models again from disk and retarget every node that uses them (the editor does this by itself when a "
+     "model file changes). With path: that model, changed or not. Without: every loaded model whose files changed. Returns "
+     "{reloaded: [{path, nodes}], failed: [{path, message}]}; a failed decode keeps the previous model.",
+     obj({"path": {"type": "string", "description": "Logical path of one loaded model (omit for every changed model)"}})),
     ("log_tail", "log.tail", "Last engine log lines (stdout and stderr) with level info, warning or error.",
      obj({"lines": {"type": "integer", "minimum": 1, "maximum": 20000, "default": 200}})),
     ("lua_exec", "lua.exec",

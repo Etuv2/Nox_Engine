@@ -3,6 +3,7 @@
 #include "PlayWorldSnapshot.h"
 #include <chrono>
 #include "SliceTask.h"
+#include "ModelHotReload.h"
 #include <memory>
 #include <string>
 #include <vector>
@@ -235,6 +236,9 @@ public:
     // Draws the queued debug primitives (src/diagnostics/DebugDraw.h) through the editor camera into a viewport rectangle.
     void DrawDebugOverlay(ImDrawList* drawList, float x, float y, float width, float height);
     std::shared_ptr<SceneGraph> GetSceneGraph() { return m_sceneGraph; }
+    std::shared_ptr<ModelManager> GetModelManager() const { return m_modelManager; }
+    // Model hot reload (src/ModelHotReload.h): polled by the editor each frame, forced by assets.reload.
+    ModelHotReloader& GetModelReloader() { return m_modelReloader; }
     std::shared_ptr<DirectionalLight> GetLighting() { return m_lighting; }
     LightManager* GetLightManager();
     ImGuiInterface* GetImGuiInterface() { return m_imguiInterface.get(); }
@@ -427,6 +431,7 @@ private:
     std::shared_ptr<SceneGraph> m_sceneGraph;
     std::shared_ptr<SceneLoader> m_sceneLoader;
     std::shared_ptr<ModelManager> m_modelManager;
+    ModelHotReloader m_modelReloader;
     std::string m_sceneToLoad;
     std::string m_sceneName;
     std::string m_currentSceneFilePath;
