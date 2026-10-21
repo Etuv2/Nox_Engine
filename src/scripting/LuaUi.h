@@ -22,6 +22,7 @@ class Texture;
 namespace NoxLua {
 
 	struct DataState;
+	class UiNavigator;
 
 	namespace ui_limits {
 		constexpr size_t kMaxCommands = 4096;        // per frame
@@ -139,8 +140,10 @@ namespace NoxLua {
 		const UiFontTable* fonts = nullptr;
 		UiTextureCache* textures = nullptr;   // ui.texture cache (module-owned); null outside the module
 		const DataState* data = nullptr;      // read policy of ui.texture (project declarations)
+		UiNavigator* nav = nullptr;           // focus and navigation of the widgets (LuaUiFocus.h), owned by the world
 		glm::vec2 viewport{ 0.0f };
 		glm::vec2 pointerOverlay{ 0.0f };   // pointer position relative to the overlay, valid while drawing
+		glm::vec2 origin{ 0.0f };           // overlay origin in window coordinates (widget hit regions)
 	};
 
 	// Creates the `ui` table (returned as a registry reference) and binds its functions to `state`.

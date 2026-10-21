@@ -2,15 +2,21 @@
 // text measurement with an ImGui font and playback onto an ImDrawList. Headless (no GPU, no window).
 #include "TestFramework.h"
 
+#include "GuiElementJson.h"
+#include "GuiNode.h"
 #include "SceneGraph.h"
+#include "scripting/LuaInput.h"
 #include "scripting/LuaUi.h"
+#include "scripting/LuaUiFocus.h"
 #include "scripting/LuaWorld.h"
+#include "ui/Pointer.h"
 
 #include "lua.h"
 #include "json.hpp"
 
 #include <IMGUI/imgui.h>
 
+#include <algorithm>
 #include <map>
 #include <string>
 #include <vector>
@@ -304,4 +310,324 @@ NOX_TEST(LuaUi, PlaybackEmitsDrawListGeometry) {
 	NOX_CHECK(list.CmdBuffer.Size >= 1);
 	// The unbalanced clip was closed: the draw list's clip stack is back to the base.
 	NOX_CHECK_EQ(list._ClipRectStack.Size, 0);
+}
+
+// ---- Widgets, focus and navigation (docs/lua_api.md "UI widgets and menus") ----------------------------------------
+// The tests drive the same calls the game loop makes: pointer BeginFrame, world BeginUiInput (before gameplay),
+// optionally world Update, DrawFrame, pointer EndFrame. Keys are fed through an InputDevices reader.
+
+namespace {
+	struct FakeKeys {
+		std::vector<int> down;
+		NoxLua::InputDevices Devices() {
+			NoxLua::InputDevices devices;
+			devices.key = [this](int scancode) { return std::find(down.begin(), down.end(), scancode) != down.end(); };
+			return devices;
+		}
+	};
+
+	// Clears pointer buttons and moves the pointer far away, so a test starts without hover, press or regions.
+	void ResetPointer() {
+		ui::Pointer& p = ui::Pointer::Get();
+		p.SetInjectionOnly(true);
+		p.InjectButton(ui::PointerButton::Left, false);
+		p.InjectButton(ui::PointerButton::Right, false);
+		p.InjectButton(ui::PointerButton::Middle, false);
+		p.InjectMove(glm::vec2(-5000.0f));
+		for (int i = 0; i < 3; ++i) {
+			p.BeginFrame(1.0f / 60.0f);
+			p.EndFrame();
+		}
+	}
+
+	// One frame: pointer, menu input, optional gameplay update, draw, pointer end.
+	void Frame(Harness& h, FakeKeys& keys, bool runUpdate = false, NoxLua::UiRecorder* out = nullptr) {
+		ui::Pointer& p = ui::Pointer::Get();
+		p.BeginFrame(1.0f / 60.0f);
+		h.world.BeginUiInput(keys.Devices(), true);
+		if (runUpdate) h.world.Update(1.0f / 60.0f, true);
+		NoxLua::UiRecorder local;
+		h.world.DrawFrame(1.0f / 60.0f, glm::vec2(1280.0f, 720.0f), p.Position(), out ? *out : local);
+		p.EndFrame();
+	}
+
+	double GlobalNumber(Harness& h, const char* name) {
+		lua_State* L = h.world.GetRuntime().State();
+		lua_getglobal(L, name);
+		const double value = lua_tonumber(L, -1);
+		lua_pop(L, 1);
+		return value;
+	}
+
+	// Scancodes used by the navigator (SDL values, see LuaUiFocus.cpp).
+	constexpr int kKeyDown = 81, kKeyRight = 79, kKeyReturn = 40, kKeyEscape = 41;
+}
+
+NOX_TEST(LuaUiWidgets, ButtonClickByMouse) {
+	ResetPointer();
+	Harness h;
+	NOX_REQUIRE(h.Load(
+		"nox.on_draw(function(ctx, ui, dt)\n"
+		"  ui.menu()\n"
+		"  if ui.button('ok', {x=10, y=10, w=100, h=30}, 'OK') then CLICKS = (CLICKS or 0) + 1 end\n"
+		"end)\n"));
+	FakeKeys keys;
+	ui::Pointer& p = ui::Pointer::Get();
+	p.InjectMove(glm::vec2(50.0f, 25.0f));
+	Frame(h, keys);                         // registers the button's hit region
+	p.InjectButton(ui::PointerButton::Left, true);
+	Frame(h, keys);                         // press: not a click yet
+	NOX_CHECK_EQ(GlobalNumber(h, "CLICKS"), 0.0);
+	p.InjectButton(ui::PointerButton::Left, false);
+	Frame(h, keys);                         // release over the same button: one click
+	NOX_CHECK_EQ(GlobalNumber(h, "CLICKS"), 1.0);
+	Frame(h, keys);
+	NOX_CHECK_EQ(GlobalNumber(h, "CLICKS"), 1.0);
+	p.InjectMove(glm::vec2(500.0f, 500.0f));
+	p.InjectButton(ui::PointerButton::Left, true);
+	Frame(h, keys);
+	p.InjectButton(ui::PointerButton::Left, false);
+	Frame(h, keys);                         // press and release elsewhere: no click
+	NOX_CHECK_EQ(GlobalNumber(h, "CLICKS"), 1.0);
+}
+
+NOX_TEST(LuaUiWidgets, KeyboardDownDownEnterActivatesThirdButton) {
+	// Runs without any gameplay update: the menu answers while the game is paused.
+	ResetPointer();
+	Harness h;
+	NOX_REQUIRE(h.Load(
+		"nox.on_draw(function(ctx, ui, dt)\n"
+		"  ui.menu()\n"
+		"  if ui.button('a', {x=10, y=10, w=100, h=30}, 'A') then A = (A or 0) + 1 end\n"
+		"  if ui.button('b', {x=10, y=50, w=100, h=30}, 'B') then B = (B or 0) + 1 end\n"
+		"  if ui.button('c', {x=10, y=90, w=100, h=30}, 'C') then C = (C or 0) + 1 end\n"
+		"end)\n"));
+	FakeKeys keys;
+	Frame(h, keys);                         // lays out the menu
+	Frame(h, keys);                         // the menu starts with its first button focused
+	NOX_CHECK(h.world.Navigator().IsFocused(ui::HashId("a")));
+	keys.down = { kKeyDown };
+	Frame(h, keys);                         // down: b
+	keys.down.clear();
+	Frame(h, keys);
+	keys.down = { kKeyDown };
+	Frame(h, keys);                         // down: c
+	keys.down.clear();
+	Frame(h, keys);
+	NOX_CHECK(h.world.Navigator().IsFocused(ui::HashId("c")));
+	keys.down = { kKeyReturn };
+	Frame(h, keys);                         // enter activates the focused (third) button
+	keys.down.clear();
+	Frame(h, keys);
+	NOX_CHECK_EQ(GlobalNumber(h, "C"), 1.0);
+	NOX_CHECK_EQ(GlobalNumber(h, "A"), 0.0);
+	NOX_CHECK_EQ(GlobalNumber(h, "B"), 0.0);
+	NOX_CHECK(h.world.Navigator().Consumed() == false);   // the last frame had no key
+}
+
+NOX_TEST(LuaUiWidgets, ConsumedInputDoesNotReachGameplay) {
+	ResetPointer();
+	Harness h;
+	NOX_REQUIRE(h.Load(
+		"nox.on_draw(function(ctx, ui, dt)\n"
+		"  ui.menu()\n"
+		"  if ui.button('fire', {x=10, y=10, w=100, h=30}, 'Fire') then FIRED = (FIRED or 0) + 1 end\n"
+		"end)\n"
+		"nox.system({ name = 'gameplay', update = function(ctx, dt)\n"
+		"  if ctx:pointer_pressed('left') and not ctx:ui_consumed() then HITS = (HITS or 0) + 1 end\n"
+		"  if ctx:ui_back_pressed() then BACKS = (BACKS or 0) + 1 end\n"
+		"end })\n"));
+	h.world.BeginPlay();
+	FakeKeys keys;
+	ui::Pointer& p = ui::Pointer::Get();
+	p.InjectMove(glm::vec2(50.0f, 25.0f));
+	Frame(h, keys, true);                   // layout
+	p.InjectButton(ui::PointerButton::Left, true);
+	Frame(h, keys, true);                   // press on the widget: gameplay sees the press as consumed
+	NOX_CHECK_EQ(GlobalNumber(h, "HITS"), 0.0);
+	p.InjectButton(ui::PointerButton::Left, false);
+	Frame(h, keys, true);
+	NOX_CHECK_EQ(GlobalNumber(h, "FIRED"), 1.0);
+	NOX_CHECK_EQ(GlobalNumber(h, "HITS"), 0.0);
+	p.InjectMove(glm::vec2(600.0f, 400.0f));
+	p.InjectButton(ui::PointerButton::Left, true);
+	Frame(h, keys, true);                   // press in open space: not consumed, gameplay acts
+	NOX_CHECK_EQ(GlobalNumber(h, "HITS"), 1.0);
+	p.InjectButton(ui::PointerButton::Left, false);
+	keys.down = { kKeyEscape };
+	Frame(h, keys, true);                   // escape: back is reported to gameplay
+	keys.down.clear();
+	NOX_CHECK_EQ(h.DiagnosticCount(), 0u);
+	NOX_CHECK_EQ(GlobalNumber(h, "BACKS"), 1.0);
+}
+
+NOX_TEST(LuaUiWidgets, SliderDragAndKeyboardStep) {
+	ResetPointer();
+	Harness h;
+	NOX_REQUIRE(h.Load(
+		"nox.on_draw(function(ctx, ui, dt)\n"
+		"  ui.menu()\n"
+		"  local v, changed = ui.slider('vol', {x=0, y=0, w=300, h=36}, VOL or 50, 0, 100, {step = 10, show_value = false})\n"
+		"  VOL = v\n"
+		"  if changed then EDITS = (EDITS or 0) + 1 end\n"
+		"end)\n"));
+	FakeKeys keys;
+	ui::Pointer& p = ui::Pointer::Get();
+	Frame(h, keys);
+	// Track spans x = 6 .. 294 (288 px). A press at 75% of it is 75, quantised to the step of 10: 80.
+	p.InjectMove(glm::vec2(222.0f, 18.0f));
+	p.InjectButton(ui::PointerButton::Left, true);
+	Frame(h, keys);
+	NOX_CHECK_EQ(GlobalNumber(h, "VOL"), 80.0);
+	p.InjectButton(ui::PointerButton::Left, false);
+	Frame(h, keys);
+	NOX_CHECK_EQ(GlobalNumber(h, "VOL"), 80.0);
+	keys.down = { kKeyRight };
+	Frame(h, keys);                         // the press focused the slider: right steps it by 10
+	keys.down.clear();
+	Frame(h, keys);
+	NOX_CHECK_EQ(GlobalNumber(h, "VOL"), 90.0);
+	NOX_CHECK_EQ(GlobalNumber(h, "EDITS"), 2.0);
+}
+
+NOX_TEST(LuaUiWidgets, ToggleFlipsWithNavigationAndAccept) {
+	ImGuiScope imgui;   // the slider measures its value text with the default font
+	ResetPointer();
+	Harness h;
+	NOX_REQUIRE(h.Load(
+		"nox.on_draw(function(ctx, ui, dt)\n"
+		"  ui.menu()\n"
+		"  local v = ui.slider('vol', {x=0, y=0, w=300, h=36}, VOL or 50, 0, 100, {step = 10})\n"
+		"  VOL = v\n"
+		"  FX = ui.toggle('fx', {x=0, y=50, w=300, h=36}, 'FX', FX or false) and true or false\n"
+		"end)\n"));
+	FakeKeys keys;
+	Frame(h, keys);
+	Frame(h, keys);                         // focus: the slider (first)
+	keys.down = { kKeyDown };
+	Frame(h, keys);                         // down: the toggle lies below it
+	keys.down.clear();
+	Frame(h, keys);
+	keys.down = { kKeyReturn };
+	Frame(h, keys);                         // accept flips the toggle
+	keys.down.clear();
+	Frame(h, keys);
+	NOX_CHECK(h.GlobalBool("FX"));
+	NOX_CHECK_EQ(GlobalNumber(h, "VOL"), 50.0);
+}
+
+NOX_TEST(LuaUiWidgets, LabelAlignmentAndMeasureMath) {
+	ImGuiScope imgui;
+	Harness h;
+	NOX_REQUIRE(h.Load(
+		"nox.on_draw(function(ctx, ui, dt)\n"
+		"  local w, hh = ui.measure_text('Hello', '', 20)\n"
+		"  MW, MH = w, hh\n"
+		"  TW = ui.text_size('', 'Hello', 20)\n"
+		"  ui.label({x=100, y=50, w=200, h=40}, 'Hi', {align = 'center'})\n"
+		"  ui.label({x=100, y=100, w=200, h=40}, 'Hi', {align = 'right', valign = 'bottom'})\n"
+		"  local col = ui.column(10, 20, 100, 5)\n"
+		"  R1Y = col:next(30).y\n"
+		"  R2 = col:next(30)\n"
+		"  R2Y = R2.y\n"
+		"end)\n"));
+	NoxLua::UiRecorder rec;
+	h.Draw(rec);
+	NOX_CHECK(GlobalNumber(h, "MW") > 0.0);
+	NOX_CHECK(GlobalNumber(h, "MH") > 0.0);
+	NOX_CHECK_EQ(GlobalNumber(h, "MW"), GlobalNumber(h, "TW"));
+	NOX_CHECK_EQ(GlobalNumber(h, "R1Y"), 20.0);
+	NOX_CHECK_EQ(GlobalNumber(h, "R2Y"), 55.0);
+	std::vector<const NoxLua::UiCommand*> texts;
+	for (const NoxLua::UiCommand& c : rec.Commands()) {
+		if (c.op == NoxLua::UiOp::Text) texts.push_back(&c);
+	}
+	NOX_REQUIRE(texts.size() == 2);
+	NOX_CHECK(texts[0]->a == glm::vec2(200.0f, 70.0f));          // centre of x 100..300, middle of y 50..90
+	NOX_CHECK(texts[0]->halign == NoxLua::UiAlign::Center);
+	NOX_CHECK(texts[1]->a == glm::vec2(300.0f, 140.0f));         // right edge, bottom of y 100..140
+	NOX_CHECK(texts[1]->halign == NoxLua::UiAlign::Right);
+	NOX_CHECK(texts[1]->valign == NoxLua::UiValign::Bottom);
+}
+
+// ---- GUI node interaction and engine events -------------------------------------------------------------------------
+
+namespace {
+	std::string GlobalString(Harness& h, const char* name) {
+		lua_State* L = h.world.GetRuntime().State();
+		lua_getglobal(L, name);
+		const std::string value = lua_isstring(L, -1) ? lua_tostring(L, -1) : "";
+		lua_pop(L, 1);
+		return value;
+	}
+}
+
+NOX_TEST(LuaUiWidgets, NavigatorFocusesEngineWidgetsAppendedAfterDraw) {
+	// GUI node elements join the layout after the draw handlers ran (LuaGameModule::InteractGui).
+	NoxLua::UiNavigator nav;
+	FakeKeys keys;
+	nav.BeginLayout();
+	nav.MarkMenu();
+	NoxLua::UiNavigator::Widget top;
+	top.id = ui::HashId("top");
+	top.min = glm::vec2(0.0f);
+	top.max = glm::vec2(100.0f, 30.0f);
+	nav.AddWidget(top);
+	nav.EndLayout();
+	NoxLua::UiNavigator::Widget guiElement;
+	guiElement.id = ui::HashId("gui.quit");
+	guiElement.min = glm::vec2(0.0f, 60.0f);
+	guiElement.max = glm::vec2(100.0f, 90.0f);
+	nav.AppendWidget(guiElement);
+
+	nav.Resolve(glm::vec2(-5000.0f), false, false, false);   // the menu starts on "top"
+	NOX_CHECK(nav.IsFocused(ui::HashId("top")));
+	keys.down = { kKeyDown };
+	nav.Sample(keys.Devices(), true);
+	nav.Resolve(glm::vec2(-5000.0f), false, false, false);
+	NOX_CHECK(nav.IsFocused(ui::HashId("gui.quit")));
+	NOX_CHECK(nav.Consumed());
+	keys.down.clear();
+	nav.Sample(keys.Devices(), true);
+	nav.Resolve(glm::vec2(-5000.0f), false, false, false);
+	NOX_CHECK(nav.IsFocused(ui::HashId("gui.quit")));
+	NOX_CHECK(!nav.Consumed());
+}
+
+NOX_TEST(LuaUiWidgets, QueuedUiEventsReachLuaHandlers) {
+	Harness h;
+	NOX_REQUIRE(h.Load(
+		"nox.on('ui.click', function(ctx, e) CLICK = e.id .. ':' .. e.action end)\n"
+		"nox.on('ui.hover', function(ctx, e) HOVER = e.entered end)\n"));
+	h.world.BeginPlay();
+	NOX_CHECK(h.world.QueueUiEvent("ui.click", "exit", "quit", -1));
+	NOX_CHECK(h.world.QueueUiEvent("ui.hover", "exit", std::string(), 1));
+	h.world.Update(1.0f / 60.0f, true);
+	NOX_CHECK(GlobalString(h, "CLICK") == "exit:quit");
+	NOX_CHECK(h.GlobalBool("HOVER"));
+}
+
+NOX_TEST(LuaUiWidgets, GuiElementInteractionFieldsRoundTripThroughJson) {
+	const nlohmann::json authored = nlohmann::json::parse(
+		R"({"kind":"text","x":10,"y":20,"text":"Quit","color":[255,255,255,255],)"
+		R"("interactive":true,"id":"quit","on_click":"quit","visible":false})");
+	GuiNode::GuiElement element;
+	NOX_REQUIRE(GuiElementFromJson(authored, element));
+	NOX_CHECK(element.interactive);
+	NOX_CHECK(!element.visible);
+	NOX_CHECK(element.id == "quit");
+	NOX_CHECK(element.onClick == "quit");
+	const nlohmann::json saved = GuiElementToJson(element);
+	NOX_CHECK(saved.value("interactive", false));
+	NOX_CHECK(saved.value("visible", true) == false);
+	NOX_CHECK(saved.value("id", std::string()) == "quit");
+	NOX_CHECK(saved.value("on_click", std::string()) == "quit");
+
+	// Defaults stay out of the file: a plain text element writes none of the interaction keys.
+	GuiNode::GuiElement plain;
+	plain.type = GuiNode::GuiType::TEXT;
+	const nlohmann::json plainJson = GuiElementToJson(plain);
+	NOX_CHECK(!plainJson.contains("interactive"));
+	NOX_CHECK(!plainJson.contains("visible"));
+	NOX_CHECK(!plainJson.contains("on_click"));
 }

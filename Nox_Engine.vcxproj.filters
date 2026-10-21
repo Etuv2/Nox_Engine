@@ -759,6 +759,9 @@
     <ClCompile Include="src\scripting\LuaUi.cpp">
       <Filter>Source Files\scripting</Filter>
     </ClCompile>
+    <ClCompile Include="src\scripting\LuaUiFocus.cpp">
+      <Filter>Source Files\scripting</Filter>
+    </ClCompile>
     <ClCompile Include="src\scripting\LuaVehicleBindings.cpp">
       <Filter>Source Files\scripting</Filter>
     </ClCompile>
@@ -1506,6 +1509,9 @@
       <Filter>Header Files\scripting</Filter>
     </ClInclude>
     <ClInclude Include="src\scripting\LuaUi.h">
+      <Filter>Header Files\scripting</Filter>
+    </ClInclude>
+    <ClInclude Include="src\scripting\LuaUiFocus.h">
       <Filter>Header Files\scripting</Filter>
     </ClInclude>
     <ClInclude Include="src\scripting\LuaVehicleBindings.h">

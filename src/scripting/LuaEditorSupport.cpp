@@ -359,6 +359,10 @@ function Ctx:pointer_wheel() end
 ---@return boolean
 function Ctx:over_ui() end
 ---@return boolean
+function Ctx:ui_consumed() end
+---@return boolean
+function Ctx:ui_back_pressed() end
+---@return boolean
 function Ctx:wants_pointer() end
 ---@param value boolean
 function Ctx:set_wants_pointer(value) end
