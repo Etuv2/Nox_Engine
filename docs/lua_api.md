@@ -225,6 +225,9 @@ Queries (reads, valid in any callback):
 | `ctx:physics_raycast(origin, dir, max_dist, mask)` | `{ entity, distance, point = {x,y,z}, normal = {x,y,z} }` for the nearest body hit within `max_dist`, or nil. `dir` need not be normalized. `entity` is absent when the body has no scene node |
 | `ctx:overlap_sphere(center, radius, mask)` | array of entity handles (ascending ID) of the bodies the sphere overlaps, touching included; empty when none |
 | `ctx:overlap_box(center, half_extents, mask)` | the same for a world-aligned box |
+| `ctx:physics_sweep_sphere(center, radius, dir, max_dist, mask)` | `{ entity, distance, point, normal }` for the first body a sphere touches when moved along `dir` (not normalized), or nil. Mesh colliders are hit |
+| `ctx:physics_sweep_capsule(a, b, radius, dir, max_dist, mask)` | the same for a capsule whose segment ends are `a` and `b` (equal ends make a sphere) |
+| `ctx:physics_sweep_box(center, half_extents, dir, max_dist, mask)` | the same for an axis-aligned box; box probes do not hit meshes |
 
 Events are delivered to `nox.on` handlers as `function(ctx, payload)`. They are queued during the physics step and
 delivered by the next Lua update, in the same order as the other events of that update.

@@ -1,3 +1,4 @@
+#include "CollisionWorld.h"
 #include "PhysicsEngine.h"
 #include "PhysicsCollision.h"
 #include "SceneNode.h"
@@ -694,6 +695,61 @@ void PhysicsEngine::RayCast(const glm::vec3& origin, const glm::vec3& direction,
 namespace {
 
 // Exact ray test against one body. `t` is the entry distance along the normalized direction, in [0, maxT].
+// Ray against a capsule: the two end spheres and the side cylinder between them. Returns the nearest valid hit.
+bool IntersectRayCapsule(const RigidBody& body, const glm::vec3& origin, const glm::vec3& dir, float maxT,
+	float& t, glm::vec3& normal) {
+	const glm::vec3 axis = body.getCapsuleAxisWorld();
+	const glm::vec3 centre = body.getPosition();
+	const float r = body.getRadius();
+	const float h = body.getHalfSegment();
+	bool found = false;
+	float best = maxT;
+	glm::vec3 bestNormal(0.0f, 1.0f, 0.0f);
+	auto consider = [&](float candidate, const glm::vec3& n) {
+		if (candidate < 0.0f || candidate > best) return;
+		best = candidate;
+		bestNormal = n;
+		found = true;
+	};
+	// End caps: spheres at both ends of the segment.
+	for (float side : { -1.0f, 1.0f }) {
+		const glm::vec3 c = centre + axis * (side * h);
+		const glm::vec3 oc = origin - c;
+		const float b = glm::dot(oc, dir);
+		const float cc = glm::dot(oc, oc) - r * r;
+		const float disc = b * b - cc;
+		if (disc < 0.0f) continue;
+		const float tc = -b - std::sqrt(disc);
+		if (tc < 0.0f || tc > best) continue;
+		// Only the cap that faces the ray (the part beyond the segment end) counts for this sphere.
+		const glm::vec3 p = origin + dir * tc;
+		if (glm::dot(p - centre, axis) * side < h) continue;
+		consider(tc, glm::normalize(p - c));
+	}
+	// Side cylinder: quadratic in the plane perpendicular to the axis, accepted within the segment.
+	const glm::vec3 oPerp = (origin - centre) - axis * glm::dot(origin - centre, axis);
+	const glm::vec3 dPerp = dir - axis * glm::dot(dir, axis);
+	const float a2 = glm::dot(dPerp, dPerp);
+	if (a2 > 1e-12f) {
+		const float b = glm::dot(oPerp, dPerp);
+		const float c2 = glm::dot(oPerp, oPerp) - r * r;
+		const float disc = b * b - a2 * c2;
+		if (disc >= 0.0f) {
+			const float tc = (-b - std::sqrt(disc)) / a2;
+			const glm::vec3 p = origin + dir * tc;
+			const float along = glm::dot(p - centre, axis);
+			if (tc >= 0.0f && tc <= best && std::abs(along) <= h) {
+				const glm::vec3 radial = (p - centre) - axis * along;
+				consider(tc, glm::normalize(radial));
+			}
+		}
+	}
+	if (!found) return false;
+	t = best;
+	normal = bestNormal;
+	return true;
+}
+
 bool IntersectRayBody(const RigidBody& body, const glm::vec3& origin, const glm::vec3& dir, float maxT,
 	float& t, glm::vec3& normal) {
 	switch (body.getShapeType()) {
@@ -754,6 +810,24 @@ bool IntersectRayBody(const RigidBody& body, const glm::vec3& origin, const glm:
 		t = (body.getPlaneDistance() - glm::dot(n, origin)) / denom;
 		if (t < 0.0f || t > maxT) return false;
 		normal = denom < 0.0f ? n : -n;
+		return true;
+	}
+	case RigidBody::ShapeType::CAPSULE: {
+		return IntersectRayCapsule(body, origin, dir, maxT, t, normal);
+	}
+	case RigidBody::ShapeType::MESH: {
+		// Triangles are in the body's local space: the ray is mapped there (a rigid transform keeps distances).
+		const CollisionWorld* mesh = body.getMesh();
+		if (!mesh) return false;
+		const glm::mat4 world = body.getTransformMatrix();
+		const glm::mat4 inverse = glm::inverse(world);
+		const glm::vec3 localOrigin(inverse * glm::vec4(origin, 1.0f));
+		const glm::vec3 localDir = glm::vec3(inverse * glm::vec4(dir, 0.0f));
+		CollisionWorld::Hit hit;
+		if (!mesh->Raycast(localOrigin, localDir, maxT, CollisionWorld::Any, hit)) return false;
+		t = hit.t;
+		normal = glm::normalize(glm::mat3(world) * hit.normal);
+		if (glm::dot(normal, dir) > 0.0f) normal = -normal;   // face the ray, as the plane test does
 		return true;
 	}
 	}
@@ -882,6 +956,13 @@ std::vector<std::shared_ptr<RigidBody>> PhysicsEngine::QueryAABB(const glm::vec3
 }
 
 // ============== CONFIGURATION ==============
+
+void PhysicsEngine::RefreshBodyBounds(RigidBody& body) {
+	auto it = m_bodyToProxy.find(body.GetBodyID());
+	if (it == m_bodyToProxy.end()) return;
+	body.computeAABB();
+	m_bvh->UpdateProxy(it->second, body.getAABBMin(), body.getAABBMax(), m_config.fatAABBMargin);
+}
 
 void PhysicsEngine::SetGravity(const glm::vec3& gravity) {
 	m_gravity = gravity;

@@ -1,5 +1,6 @@
 #include "reflect/Reflection.h"
 #include "SceneLoader.h"
+#include "physics/MeshCollider.h"
 #include "SceneNode.h"
 #include "AudioNode.h"
 #include "GuiNode.h"
@@ -1456,6 +1457,24 @@ nlohmann::json SceneLoader::SerializeCollider(const std::shared_ptr<SceneNode>& 
 		break;
 	}
 
+	case RigidBody::ShapeType::CAPSULE: {
+		colliderJson["type"] = "capsule";
+		colliderJson["mass"] = rb->getMass();
+		colliderJson["radius"] = rb->getBoundingRadius();
+		colliderJson["half_segment"] = rb->getHalfSegment();
+		colliderJson["axis"] = rb->getCapsuleAxis();
+		colliderJson["static"] = rb->IsStatic();
+		colliderJson["friction"] = rb->getFriction();
+		break;
+	}
+
+	case RigidBody::ShapeType::MESH: {
+		colliderJson["type"] = "mesh";
+		colliderJson["mesh_path"] = rb->getMeshPath();
+		colliderJson["friction"] = rb->getFriction();
+		break;
+	}
+
 	default:
 		std::cerr << "[SceneLoader] Unknown collider shape type" << std::endl;
 		break;
@@ -1688,6 +1707,48 @@ void SceneLoader::ProcessCollider(const nlohmann::json& colliderJson, std::share
 			rb->setAcceleration(glm::vec3(0.0f));
 		}
 
+		rb->computeInertiaTensor();
+		rb->computeAABB();
+		node->AttachRigidBody(rb);
+		m_physicsEngine->AddBody(rb);
+	}
+	else if (type == "capsule") {
+		auto rb = std::make_shared<RigidBody>();
+		rb->setShape(RigidBody::ShapeType::CAPSULE);
+		rb->AttachNode(node);
+		rb->setPosition(node->GetPosition());
+		rb->setOrientation(node->GetOrientation());
+		rb->setFriction(colliderJson.value("friction", m_physicsEngine->GetConfig().defaultFriction));
+		rb->setRestitution(m_physicsEngine->GetConfig().defaultRestitution);
+		rb->setCapsule(colliderJson.value("radius", 0.5f), colliderJson.value("half_segment", 0.5f),
+			colliderJson.value("axis", 1));
+		if (colliderJson.value("static", false)) {
+			rb->setMass(0.0f);
+			rb->SetBodyType(RigidBody::BodyType::STATIC);
+			rb->setGravityScale(0.0f);
+		}
+		else {
+			rb->setMass(colliderJson.value("mass", 1.0f));
+			rb->setGravityScale(1.0f);
+		}
+		rb->computeInertiaTensor();
+		rb->computeAABB();
+		node->AttachRigidBody(rb);
+		m_physicsEngine->AddBody(rb);
+	}
+	else if (type == "mesh") {
+		// Static geometry from a glTF/GLB file; the node's transform places it. Missing files leave an empty mesh.
+		const std::string path = colliderJson.value("mesh_path", std::string());
+		auto mesh = MeshCollider::LoadShared(path);
+		glm::vec3 mn(0.0f), mx(0.0f);
+		if (mesh) MeshCollider::LocalBounds(*mesh, mn, mx);
+		auto rb = std::make_shared<RigidBody>();
+		rb->AttachNode(node);
+		rb->setPosition(node->GetPosition());
+		rb->setOrientation(node->GetOrientation());
+		rb->setFriction(colliderJson.value("friction", m_physicsEngine->GetConfig().defaultFriction));
+		rb->setRestitution(m_physicsEngine->GetConfig().defaultRestitution);
+		rb->setMesh(mesh, mn, mx, path);
 		rb->computeInertiaTensor();
 		rb->computeAABB();
 		node->AttachRigidBody(rb);
