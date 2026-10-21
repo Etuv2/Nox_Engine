@@ -815,6 +815,10 @@ void ModularRenderer::SyncSurfelGISettings()
 		GetEnvVarInt("NOX_SURFEL_GI_CELL_AVG_ALL", settings.cellAverageAllCells ? 1 : 0) != 0;
 	settings.gridReachCellScale = std::clamp(
 		GetEnvVarFloat("NOX_SURFEL_GI_GRID_REACH", settings.gridReachCellScale), 0.0f, 4.0f);
+	// Attribution knob (plan section 24): 0 = linear grid cells instead of the default non-linear (near-dense) grid.
+	if (const char* nonLinearEnv = std::getenv("NOX_SURFEL_GI_NONLINEAR_GRID")) {
+		settings.useNonLinearGrid = std::atoi(nonLinearEnv) != 0;
+	}
 	m_context.surfelGIUseScreenTrace = settings.useScreenSpaceTrace;
 	m_context.surfelGIUseRadialDepth = settings.useRadialDepth;
 	m_context.surfelGIUseRayGuiding = settings.useRayGuiding;
