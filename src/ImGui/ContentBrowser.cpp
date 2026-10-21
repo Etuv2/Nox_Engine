@@ -137,6 +137,68 @@ namespace {
 		return AssetIO::SourcePath(logical);
 	}
 
+	std::string ReadWholeFile(const fs::path& p)
+	{
+		std::ifstream in(p, std::ios::binary);
+		return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+	}
+
+	bool WriteWholeFile(const fs::path& p, const std::string& text)
+	{
+		std::ofstream out(p, std::ios::binary | std::ios::trunc);
+		if (!out) return false;
+		out << text;
+		return static_cast<bool>(out);
+	}
+
+	// Scene and project JSON files whose text mentions the logical path (a plain text search, no parse).
+	std::vector<std::string> FindReferences(const std::string& logicalPath)
+	{
+		std::vector<std::string> out;
+		if (logicalPath.empty()) return out;
+		for (const char* root : { "scenes", "projects" }) {
+			const auto dir = PhysicalPath(root);
+			std::error_code ec;
+			if (!dir || !fs::is_directory(*dir, ec)) continue;
+			for (fs::recursive_directory_iterator it(*dir, ec), end; !ec && it != end; it.increment(ec)) {
+				std::error_code fileEc;
+				if (!it->is_regular_file(fileEc) || it->path().extension() != ".json") continue;
+				if (it->file_size(fileEc) > 16u * 1024u * 1024u) continue;
+				if (ReadWholeFile(it->path()).find(logicalPath) != std::string::npos) out.push_back(it->path().string());
+			}
+		}
+		return out;
+	}
+
+	struct RefEdit { std::string file, before, after; };
+
+	// Replaces every occurrence of from with to in each file. Returns the files that changed, with their text before and after.
+	std::vector<RefEdit> RewriteReferences(const std::vector<std::string>& files, const std::string& from, const std::string& to)
+	{
+		std::vector<RefEdit> edits;
+		for (const std::string& file : files) {
+			const std::string before = ReadWholeFile(file);
+			std::string after = before;
+			bool changed = false;
+			for (size_t pos = 0; (pos = after.find(from, pos)) != std::string::npos; pos += to.size()) {
+				after.replace(pos, from.size(), to);
+				changed = true;
+			}
+			if (!changed) continue;
+			if (!WriteWholeFile(file, after)) {
+				ui::Toast("Could not update " + fs::path(file).filename().string(), ui::ToastKind::Warning);
+				continue;
+			}
+			edits.push_back({ file, before, after });
+		}
+		return edits;
+	}
+
+	void RestoreReferences(const std::vector<RefEdit>& edits, bool useAfter)
+	{
+		for (const RefEdit& e : edits) WriteWholeFile(e.file, useAfter ? e.after : e.before);
+	}
+
 	bool ValidName(const std::string& name)
 	{
 		if (name.empty() || name == "." || name == "..") return false;
@@ -1102,7 +1164,13 @@ void ContentBrowser::DrawModal()
 	bool confirm = false;
 	if (m_modal == Modal::Delete) {
 		ImGui::Text("Move \"%s\" to the Recycle Bin?", Basename(m_modalTarget).c_str());
-		ImGui::TextDisabled("References from scenes and prefabs are not changed.");
+		if (m_modalRefs.empty()) {
+			ImGui::TextDisabled("No scene or project file mentions it.");
+		}
+		else {
+			ImGui::TextColored(ImVec4(1.0f, 0.82f, 0.36f, 1.0f), "Mentioned by %d scene or project file(s). They are not changed:", static_cast<int>(m_modalRefs.size()));
+			for (size_t i = 0; i < m_modalRefs.size() && i < 8; ++i) ImGui::BulletText("%s", fs::path(m_modalRefs[i]).filename().string().c_str());
+		}
 		if (ImGui::Button("Move to Recycle Bin")) confirm = true;
 		ImGui::SameLine();
 		if (ImGui::Button("Cancel")) close = true;
@@ -1117,10 +1185,15 @@ void ContentBrowser::DrawModal()
 		if (enter || ImGui::Button(action)) confirm = true;
 		ImGui::SameLine();
 		if (ImGui::Button("Cancel")) close = true;
-		if (m_modal == Modal::Rename) ImGui::TextDisabled("Scenes and prefabs that reference the old name are not updated.");
+		if (m_modal == Modal::Rename && m_modalRefs.empty()) ImGui::TextDisabled("No scene or project file mentions the old name.");
+		if (m_modal == Modal::Rename && !m_modalRefs.empty()) {
+			ImGui::Checkbox("Update the name in these files", &m_modalUpdateRefs);
+			for (size_t i = 0; i < m_modalRefs.size() && i < 8; ++i) ImGui::BulletText("%s", fs::path(m_modalRefs[i]).filename().string().c_str());
+			ImGui::TextDisabled("The open scene is never changed by a rename: edit it by hand.");
+		}
 	}
 	if (confirm) {
-		if (m_modal == Modal::Rename) ApplyRename(m_modalTarget, m_nameBuf);
+		if (m_modal == Modal::Rename) ApplyRename(m_modalTarget, m_nameBuf, m_modalUpdateRefs);
 		else if (m_modal == Modal::Delete) DeleteEntry(m_modalTarget);
 		else CreateNew(m_modal, m_nameBuf);
 		close = true;
@@ -1208,9 +1281,16 @@ void ContentBrowser::OpenModal(Modal kind, const std::string& target, const std:
 	m_openModal = true;
 	m_modalTarget = target;
 	std::snprintf(m_nameBuf, sizeof(m_nameBuf), "%s", initialName.c_str());
+	m_modalRefs.clear();
+	m_modalUpdateRefs = true;
+	std::error_code ec;
+	if ((kind == Modal::Rename || kind == Modal::Delete) && !target.empty()) {
+		const auto phys = PhysicalPath(target);
+		if (phys && !fs::is_directory(*phys, ec)) m_modalRefs = FindReferences(target);
+	}
 }
 
-void ContentBrowser::ApplyRename(const std::string& oldPath, const std::string& newName)
+void ContentBrowser::ApplyRename(const std::string& oldPath, const std::string& newName, bool updateRefs)
 {
 	if (!ValidName(newName)) {
 		ui::Toast("That name is not valid", ui::ToastKind::Warning);
@@ -1230,6 +1310,26 @@ void ContentBrowser::ApplyRename(const std::string& oldPath, const std::string& 
 	if (ec) {
 		ui::Toast("Rename failed: " + ec.message(), ui::ToastKind::Error);
 		return;
+	}
+	// References in the other scene and project files follow the new name (text replace, one undo step with the rename).
+	// The open scene is left alone: its text would be overwritten by the next save.
+	std::vector<RefEdit> edits;
+	if (updateRefs) {
+		const std::string openScene = m_host.currentScene ? m_host.currentScene() : std::string();
+		const auto openPhys = openScene.empty() ? std::nullopt : PhysicalPath(openScene);
+		std::vector<std::string> files;
+		for (const std::string& f : m_modalRefs) {
+			if (openPhys && fs::path(f).lexically_normal() == openPhys->lexically_normal()) continue;
+			files.push_back(f);
+		}
+		edits = RewriteReferences(files, oldPath, newPath);
+		if (!edits.empty()) ui::Toast("Updated " + std::to_string(edits.size()) + " reference file(s)", ui::ToastKind::Info);
+	}
+	if (m_host.pushUndo) {
+		const fs::path srcPath = *src, dstPath = *dst;
+		m_host.pushUndo("Rename " + Basename(oldPath),
+			[this, srcPath, dstPath, edits] { std::error_code ec2; fs::rename(dstPath, srcPath, ec2); RestoreReferences(edits, false); RequestRescan(); },
+			[this, srcPath, dstPath, edits] { std::error_code ec2; fs::rename(srcPath, dstPath, ec2); RestoreReferences(edits, true); RequestRescan(); });
 	}
 	if (m_selected == oldPath) m_selected = newPath;
 	if (m_folder == oldPath) m_folder = newPath;
@@ -1267,6 +1367,12 @@ void ContentBrowser::Duplicate(const Entry& e)
 		if (ec) {
 			ui::Toast("Duplicate failed: " + ec.message(), ui::ToastKind::Error);
 			return;
+		}
+		if (m_host.pushUndo) {
+			const fs::path srcPath = *src, dstPath = *dst;
+			m_host.pushUndo("Duplicate " + e.name,
+				[this, dstPath] { MoveToRecycleBin(dstPath); RequestRescan(); },
+				[this, srcPath, dstPath] { std::error_code ec2; fs::copy_file(srcPath, dstPath, ec2); RequestRescan(); });
 		}
 		m_selected = target;
 		RequestRescan();

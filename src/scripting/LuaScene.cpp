@@ -128,6 +128,20 @@ namespace NoxLua {
 		}
 	}
 
+	namespace {
+		std::optional<nlohmann::json> g_pendingPayload;   // one slot: the latest load_scene request wins
+	}
+
+	void SetPendingScenePayload(std::optional<nlohmann::json> payload) {
+		g_pendingPayload = std::move(payload);
+	}
+
+	std::optional<nlohmann::json> TakePendingScenePayload() {
+		std::optional<nlohmann::json> out = std::move(g_pendingPayload);
+		g_pendingPayload.reset();
+		return out;
+	}
+
 	void InstallSceneApi(lua_State* L, int ctxIdx, LuaWorld* w) {
 		ctxIdx = lua_absindex(L, ctxIdx);
 		SetFn(L, w, ctxIdx, "instantiate", CtxInstantiate);

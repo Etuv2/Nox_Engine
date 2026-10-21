@@ -2,6 +2,7 @@
 #include "MainWindow.h"
 #include "ui/Pointer.h"
 #include "Core.h"
+#include "automation/AutomationServer.h"
 #include "ImGuiInterface.h"
 #include "assets/AssetIO.h"
 #include "assets/AssetIOJson.h"
@@ -443,6 +444,8 @@ void MainWindow::Run() {
             }
         }
 
+        // Automation server (src/automation): screenshot requests and engine.step replies, after Render.
+        automation::EndFrame(m_windowWidth, m_windowHeight);
         FrameProfiler::Mark("capture");
         // Swap buffers (already checking visibility, so always swap here)
         rhi::Gpu().Present();

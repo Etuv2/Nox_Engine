@@ -84,6 +84,11 @@ namespace NoxLua {
 		// Protected call of a C function with one lightuserdata argument (installers, bootstrap helpers).
 		bool ProtectedCall(int (*fn)(lua_State*), void* arg, RunError* error);
 
+		// Resumes a coroutine thread created on this state (LuaWorld tasks). Same instruction budget as CallRef.
+		// True when the thread yielded (nresults values on its stack) or finished; on error the failure is in *error
+		// with the coroutine's traceback, and the thread is dead.
+		bool Resume(lua_State* thread, int nargs, int& nresults, RunError* error);
+
 		// Modules read so far, in first-read order (the set a reload must stage).
 		const std::vector<ModuleRecord>& LoadedModules() const { return m_modules; }
 		// Process-wide count of live runtimes (leak checks).

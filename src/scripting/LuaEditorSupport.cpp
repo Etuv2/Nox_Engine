@@ -99,9 +99,16 @@ R"LUA(---@meta
 ---@field fixed boolean?
 ---@field update fun(ctx: nox.Ctx, dt: number)
 
+---@class nox.Task
+---@field cancel fun(self: nox.Task)
+---@field active fun(self: nox.Task): boolean
+
 ---@class nox.BehaviorDef
 ---@field name string
----@field update fun(ctx: nox.Ctx, entity: nox.Entity, dt: number)
+---@field update fun(ctx: nox.Ctx, entity: nox.Entity, dt: number)?
+---@field fixed_update fun(ctx: nox.Ctx, entity: nox.Entity, dt: number)?
+---@field on_start fun(ctx: nox.Ctx, entity: nox.Entity)?
+---@field on_destroy fun(ctx: nox.Ctx, entity: nox.Entity)?
 
 ---@alias nox.FieldType "number"|"integer"|"boolean"|"string"
 
@@ -260,7 +267,52 @@ function Ctx:remove_component(h, name) end
 ---@return nox.Entity
 function Ctx:instantiate(path, opts) end
 ---@param path string
-function Ctx:load_scene(path) end
+---@param payload table? plain data (tables, numbers, strings, booleans) for the next scene's begin_play
+function Ctx:load_scene(path, payload) end
+
+-- Timers and coroutines (play clock; paused and stopped games do not advance them)
+---@param seconds number
+---@param fn fun(ctx: nox.Ctx, entity: nox.Entity?)
+---@param entity nox.Entity? scope: cancelled when the entity is destroyed
+---@return nox.Task
+function Ctx:after(seconds, fn, entity) end
+---@param seconds number
+---@param fn fun(ctx: nox.Ctx, entity: nox.Entity?)
+---@param entity nox.Entity?
+---@return nox.Task
+function Ctx:every(seconds, fn, entity) end
+---@param fn fun(ctx: nox.Ctx, entity: nox.Entity?)
+---@param entity nox.Entity?
+---@return nox.Task
+function Ctx:start_coroutine(fn, entity) end
+---Inside a coroutine started with start_coroutine only.
+---@param seconds number
+function Ctx:wait(seconds) end
+---Inside a coroutine started with start_coroutine only.
+---@param frames integer
+function Ctx:wait_frames(frames) end
+---Inside a coroutine started with start_coroutine only.
+---@param predicate fun(ctx: nox.Ctx, entity: nox.Entity?): boolean
+function Ctx:wait_until(predicate) end
+---@return any payload a copy of the payload given to ctx:load_scene, or nil
+function Ctx:scene_payload() end
+
+-- Save slots (user directory, saves/<name>.json)
+---@param name string letters, digits, '_' and '-' (1..48)
+---@param value any plain data
+---@return boolean, string?
+function Ctx:save_slot(name, value) end
+---@param name string
+---@return any, string?
+function Ctx:load_slot(name) end
+---@param name string
+---@return boolean
+function Ctx:save_exists(name) end
+---@param name string
+---@return boolean, string?
+function Ctx:delete_save(name) end
+---@return string[]
+function Ctx:list_saves() end
 
 -- Physics queries
 ---@param origin nox.Vec3Like
