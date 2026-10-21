@@ -103,7 +103,9 @@ Engine state. No parameters.
 ```
 
 `mode` is `editor` or `game`. `loading` is true while a scene swap is pending. `frame` counts simulation frames
-run. `tier` is the quality tier of the scene (empty when the scene names none).
+run. `scene_frame` counts the live frames of the current scene (frames shown without a loading screen, numbered from
+1 after each commit; see `docs/scenes.md` "Loading"). `tier` is the quality tier of the scene (empty when the scene
+names none).
 
 ### engine.quit
 

@@ -370,7 +370,7 @@ scene (probes on and off), not measured on a scene with many probe misses.
 Debugging: `NOX_SSR_DEBUG_VIEW` replaces the lit image with the SSR signal alone, so each stage can be measured
 without lighting: `1` raw resolve, `2` temporal output (the blur chain's input, which is what the pass produced before
 the blur existed), `3` composite, `4` chosen blur level as a colour ramp (blue sharp, red top level), `5` chosen level
-as raw float in R (exact, alpha = hit). `NOX_SSR_DUMP_DIR` with `NOX_SSR_DUMP_FRAMES` (comma list of SSR frame numbers)
+as raw float in R (exact, alpha = hit). `NOX_SSR_DUMP_DIR` with `NOX_SSR_DUMP_FRAMES` (comma list of scene frame numbers, `docs/scenes.md` "Loading")
 writes the texture the view selects as raw float RGBA, without tonemapping, to `ssr_view<N>_f<frame>.f32`: a text header
 line `width height channels`, then rows bottom-to-top as float32. Use it for offline measurement; the lit image goes
 through the post-process.
