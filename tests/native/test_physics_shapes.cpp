@@ -387,6 +387,60 @@ NOX_TEST(PhysicsShapes, CharacterClimbsThirtyCentimetreStep)
 	NOX_CHECK(settings->onFloor);
 }
 
+// A body added as a small sphere far away, then given a mesh floor over the origin (as the scene loader does when
+// the Collider property is applied after AddBody): RefreshBodyBounds must move its broadphase proxy, or the floor
+// is invisible to queries.
+NOX_TEST(PhysicsShapes, ChangedStaticBoundsReachTheBroadphase)
+{
+	PhysicsEngine physics;
+	auto body = std::make_shared<RigidBody>();
+	body->SetBodyType(RigidBody::BodyType::STATIC);
+	body->setSphere(0.5f);
+	body->setPosition(glm::vec3(30.0f, 0.0f, 0.0f));
+	body->computeAABB();
+	physics.AddBody(body);
+
+	std::vector<glm::vec3> pos;
+	std::vector<uint32_t> idx;
+	AddQuad(pos, idx, glm::vec3(-20.0f, 0.0f, -20.0f), glm::vec3(20.0f, 0.0f, -20.0f), glm::vec3(20.0f, 0.0f, 20.0f),
+		glm::vec3(-20.0f, 0.0f, 20.0f));
+	auto world = std::make_shared<CollisionWorld>();
+	world->AddMesh("floor", pos, idx);
+	glm::vec3 mn, mx;
+	MeshCollider::LocalBounds(*world, mn, mx);
+	body->setMesh(world, mn, mx, "");
+	body->setPosition(glm::vec3(0.0f));   // the mesh is in the body's local space: its origin is the floor's origin
+	physics.RefreshBodyBounds(*body);
+
+	ShapeSweep::Probe sphere;
+	sphere.kind = ShapeSweep::Kind::SPHERE;
+	sphere.center = glm::vec3(0.0f, 5.0f, 0.0f);
+	sphere.radius = 0.5f;
+	ShapeSweep::Hit hit;
+	NOX_REQUIRE(ShapeSweep::Sweep(physics, sphere, glm::vec3(0.0f, -1.0f, 0.0f), 10.0f, 0xFFFFFFFFu, hit));
+	NOX_CHECK(hit.body == body);
+	NOX_CHECK(std::fabs(hit.distance - 4.5f) < 0.01f);
+}
+
+// The demo: a character with gravity walks across a mesh floor (Move each frame, then the physics step).
+NOX_TEST(PhysicsShapes, CharacterWalkingOnMeshFloorWithGravityStaysOnTheFloor)
+{
+	PhysicsEngine physics;   // default gravity
+	MakeMeshFloor(physics);
+
+	TestScene scene;
+	auto hero = scene.Make("hero", glm::vec3(0.0f, 0.0f, 0.0f));
+	NOX_REQUIRE(physics.Characters().Add(hero));
+	float lowest = 1e9f;
+	for (int frame = 0; frame < 240; ++frame) {
+		const glm::vec3 walk = (frame % 120 < 60) ? glm::vec3(0.0f, 0.0f, -4.0f * kDt) : glm::vec3(4.0f * kDt, 0.0f, 0.0f);
+		physics.Characters().Move(physics, *hero, walk);
+		physics.Update(kDt);
+		lowest = std::min(lowest, hero->GetWorldPosition().y);
+	}
+	NOX_CHECK(lowest > -0.05f);
+}
+
 NOX_TEST(PhysicsShapes, CharacterNeverFallsThroughMeshFloorAt20MetresPerSecond)
 {
 	PhysicsEngine physics;   // default gravity
@@ -484,3 +538,4 @@ NOX_TEST(PhysicsShapes, MeshColliderCacheReturnsOneMeshPerPath)
 	NOX_CHECK(MeshCollider::LoadShared("") == nullptr);
 	MeshCollider::ClearCache();
 }
+

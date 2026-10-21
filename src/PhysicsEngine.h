@@ -364,6 +364,12 @@ public:
     void ResetConfigToDefaults() { SetConfig(m_defaultConfig); }
 
     /**
+     * Recomputes a body's bounds and moves its broadphase proxy. Call after changing a body's shape, mesh or
+     * position outside the simulation: static bodies are not re-tested each step (see UpdateBVHProxies).
+     */
+    void RefreshBodyBounds(RigidBody& body);
+
+    /**
      * Set gravity
      */
     void SetGravity(const glm::vec3& gravity);

@@ -957,6 +957,13 @@ std::vector<std::shared_ptr<RigidBody>> PhysicsEngine::QueryAABB(const glm::vec3
 
 // ============== CONFIGURATION ==============
 
+void PhysicsEngine::RefreshBodyBounds(RigidBody& body) {
+	auto it = m_bodyToProxy.find(body.GetBodyID());
+	if (it == m_bodyToProxy.end()) return;
+	body.computeAABB();
+	m_bvh->UpdateProxy(it->second, body.getAABBMin(), body.getAABBMax(), m_config.fatAABBMargin);
+}
+
 void PhysicsEngine::SetGravity(const glm::vec3& gravity) {
 	m_gravity = gravity;
 	m_config.gravityX = gravity.x;

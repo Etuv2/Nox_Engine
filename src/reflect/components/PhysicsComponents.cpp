@@ -19,6 +19,8 @@ namespace {
 
 std::shared_ptr<RigidBody> BodyOf(const SceneNode& n) { return n.GetRigidBody(); }
 
+void RefreshBounds(RigidBody& rb);
+
 // Creates the default body for a node: a dynamic unit-mass sphere with the same defaults the scene
 // loader uses for a sphere collider entry. Fails when the physics world is not available.
 bool AddBodyToNode(SceneNode& node) {
@@ -42,6 +44,7 @@ bool AddBodyToNode(SceneNode& node) {
 	rb->setAcceleration(glm::vec3(0.0f));
 	rb->computeInertiaTensor();
 	rb->computeAABB();
+	RefreshBounds(*rb);
 	node.AttachRigidBody(rb);
 	physics->AddBody(rb);
 	NotifySceneChanged();
@@ -60,20 +63,28 @@ bool RemoveBodyFromNode(SceneNode& node) {
 	return true;
 }
 
+// Keeps the broadphase in step with a body whose shape, mesh or capsule changed after it was added.
+void RefreshBounds(RigidBody& rb) {
+	if (PhysicsEngine* physics = Services().physics) physics->RefreshBodyBounds(rb);
+}
+
 // Shape type as the enum index used by the "shape" property (sphere, box, plane, capsule, mesh).
 int64_t ShapeIndex(const RigidBody& rb) {
 	return static_cast<int64_t>(rb.getShapeType());
 }
 
-// Gives a mesh body its geometry from an asset path (loaded once and shared). An empty or unreadable path leaves the
-// body without triangles, so it has no contacts until a valid path is set.
+// Gives a body its mesh geometry from an asset path (loaded once and shared) without changing its shape type. An empty
+// or unreadable path leaves no triangles, so the mesh has no contacts until a valid path is set.
 void SetMeshFromPath(RigidBody& rb, const std::string& path) {
 	auto mesh = MeshCollider::LoadShared(path);
 	glm::vec3 mn(0.0f), mx(0.0f);
 	if (mesh) MeshCollider::LocalBounds(*mesh, mn, mx);
+	const RigidBody::ShapeType shape = rb.getShapeType();
 	rb.setMesh(mesh, mn, mx, path);
+	rb.setShape(shape);
 	rb.computeInertiaTensor();
 	rb.computeAABB();
+	RefreshBounds(rb);
 }
 
 bool FiniteAndPositive(const glm::vec3& v) {
@@ -250,14 +261,14 @@ void RegisterCollider() {
 				rb->setCapsule(radius, halfSegment, rb->getCapsuleAxis());
 				break;
 			}
-			case 4: {
-				const std::string path = rb->getMeshPath();
-				SetMeshFromPath(*rb, path);
+			case 4:
+				SetMeshFromPath(*rb, rb->getMeshPath());
+				rb->setShape(RigidBody::ShapeType::MESH);
 				break;
-			}
 			default: return false;
 			}
 			rb->computeAABB();
+			RefreshBounds(*rb);
 			NotifySceneChanged();
 			return true;
 		});
@@ -276,6 +287,7 @@ void RegisterCollider() {
 				rb->setBoundingRadius(static_cast<float>(std::get<double>(v)));
 				rb->computeInertiaTensor();
 				rb->computeAABB();
+				RefreshBounds(*rb);
 				NotifySceneChanged();
 				return true;
 			}), 0.01, 10000.0, 0.01);
@@ -295,6 +307,7 @@ void RegisterCollider() {
 				rb->setBox(half);
 				rb->setShape(shapeType);
 				rb->computeAABB();
+				RefreshBounds(*rb);
 				NotifySceneChanged();
 				return true;
 			}),
@@ -308,6 +321,7 @@ void RegisterCollider() {
 				rb->setPlane(normal, rb->getPlaneDistance());
 				rb->setShape(shapeType);
 				rb->computeAABB();
+				RefreshBounds(*rb);
 				NotifySceneChanged();
 				return true;
 			}),
@@ -320,6 +334,7 @@ void RegisterCollider() {
 				rb->setPlane(rb->getPlaneNormal(), static_cast<float>(std::get<double>(v)));
 				rb->setShape(shapeType);
 				rb->computeAABB();
+				RefreshBounds(*rb);
 				NotifySceneChanged();
 				return true;
 			}), -100000.0, 100000.0, 0.1),
@@ -335,13 +350,15 @@ void RegisterCollider() {
 					if (!rb) return false;
 					const float height = static_cast<float>(std::get<double>(v));
 					const float radius = rb->getBoundingRadius();
+					const RigidBody::ShapeType shape = rb->getShapeType();
 					rb->setCapsule(radius, std::max(0.0f, 0.5f * height - radius), rb->getCapsuleAxis());
+					rb->setShape(shape);
 					rb->computeInertiaTensor();
 					rb->computeAABB();
+					RefreshBounds(*rb);
 					NotifySceneChanged();
 					return true;
 				}), 0.01, 10000.0, 0.01);
-			p.applies = [](const SceneNode& n) { auto rb = BodyOf(n); return rb && rb->getShapeType() == RigidBody::ShapeType::CAPSULE; };
 			return p;
 		}(),
 		[] {
@@ -350,13 +367,15 @@ void RegisterCollider() {
 				[](SceneNode& n, const PropValue& v) {
 					auto rb = BodyOf(n);
 					if (!rb) return false;
+					const RigidBody::ShapeType shape = rb->getShapeType();
 					rb->setCapsule(rb->getBoundingRadius(), rb->getHalfSegment(), static_cast<int>(std::get<int64_t>(v)));
+					rb->setShape(shape);
 					rb->computeAABB();
+					RefreshBounds(*rb);
 					NotifySceneChanged();
 					return true;
 				});
 			p.enumNames = { "x", "y", "z" };
-			p.applies = [](const SceneNode& n) { auto rb = BodyOf(n); return rb && rb->getShapeType() == RigidBody::ShapeType::CAPSULE; };
 			return p;
 		}(),
 		// Mesh: the glTF/GLB file whose geometry collides (the node's transform places it).
@@ -371,7 +390,6 @@ void RegisterCollider() {
 					return true;
 				});
 			p.assetFilter = { ".glb", ".gltf" };
-			p.applies = [](const SceneNode& n) { auto rb = BodyOf(n); return rb && rb->getShapeType() == RigidBody::ShapeType::MESH; };
 			return p;
 		}(),
 		Ranged(Prop("layer", PropType::Int,
