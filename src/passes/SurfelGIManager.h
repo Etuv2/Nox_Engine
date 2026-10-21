@@ -172,12 +172,12 @@ struct SurfelGISettings {
 	float radialDepthSigmaScale = 1.0f;
 	float indirectIntensity = 1.0f;
 	float cellAverageFallbackStrength = 1.0f;
-	// Gather kernel cutoff in receiver base-cell sizes (0 = off, the tail weights stay; off by default, plan section 21). A surfel beyond the cutoff gets
+	// Gather kernel cutoff in receiver base-cell sizes (0 = off, the tail weights stay; default 1, plan section 21). A surfel beyond the cutoff gets
 	// zero weight, with a (1 - x^2)^2 taper, so the 3x3x3 window stops changing with the receiver's cell (plan section 21).
-	float gatherCutoffCells = 0.0f;
+	float gatherCutoffCells = 1.0f;
 	// Cell-average fallback interpolated from the 8 corner cells of the receiver's position (true) or the base cell's
 	// constant (false, the GIBS form). Plan section 21.
-	bool gatherSmoothFallback = false;
+	bool gatherSmoothFallback = true;
 	// Stochastic per-cell gather (plan section 21, round 2): samples per cell in the window, hashed start per pixel and frame.
 	bool gatherStochastic = false;
 	uint32_t gatherPerCellSamples = 2u;
