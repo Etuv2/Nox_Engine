@@ -269,6 +269,7 @@
     <ClCompile Include="src\ImGui\LightingWindow.cpp" />
     <ClCompile Include="src\ImGui\PerformanceWindow.cpp" />
     <ClCompile Include="src\ImGui\PhysicsWindow.cpp" />
+    <ClCompile Include="src\ImGui\InputActionsWindow.cpp" />
     <ClCompile Include="src\ImGui\RenderingSettingsWindow.cpp" />
     <ClCompile Include="src\ImGui\SceneHierarchyWindow.cpp" />
     <ClCompile Include="src\ImGui\StateExportWindow.cpp" />
@@ -376,6 +377,7 @@
     <ClCompile Include="src\diagnostics\DebugDraw.cpp" />
     <ClCompile Include="src\editor\HierarchyModel.cpp" />
     <ClCompile Include="src\editor\InspectorUndo.cpp" />
+    <ClCompile Include="src\editor\InputActionsModel.cpp" />
     <ClCompile Include="src\editor\Selection.cpp" />
     <ClCompile Include="src\editor\Clipboard.cpp" />
     <ClCompile Include="src\passes\ParticlePass.cpp" />
@@ -477,6 +479,7 @@
     <ClInclude Include="src\ImGui\LightingWindow.h" />
     <ClInclude Include="src\ImGui\PerformanceWindow.h" />
     <ClInclude Include="src\ImGui\PhysicsWindow.h" />
+    <ClInclude Include="src\ImGui\InputActionsWindow.h" />
     <ClInclude Include="src\ImGui\RenderingSettingsWindow.h" />
     <ClInclude Include="src\ImGui\SceneHierarchyWindow.h" />
     <ClInclude Include="src\ImGui\StateExportWindow.h" />
@@ -611,6 +614,7 @@
     <ClInclude Include="src\diagnostics\DebugDraw.h" />
     <ClInclude Include="src\editor\HierarchyModel.h" />
     <ClInclude Include="src\editor\InspectorUndo.h" />
+    <ClInclude Include="src\editor\InputActionsModel.h" />
     <ClInclude Include="src\editor\Selection.h" />
     <ClInclude Include="src\editor\Clipboard.h" />
     <ClInclude Include="src\passes\ParticlePass.h" />
@@ -648,7 +652,7 @@
     <None Include="C:\Users\desti\Downloads\LearnOpenGL - Diffuse irradiance.pdf" />
     <None Include="C:\Users\desti\Downloads\LearnOpenGL - Specular IBL.pdf" />
     <None Include="config\config.json" />
-    <None Include="config\input_config.json" />
+    <None Include="config\editor_input.json" />
     <None Include="README.md" />
     <None Include="scenes\animation_test.json" />
     <None Include="scenes\cornell_box.json" />

@@ -5,7 +5,7 @@
     "shaders",
     "fonts/solace",
     "images/logo.png",
-    "config/input_config.json",
+    "config/editor_input.json",
     "config/render_presets.json",
     "config/editor_settings.json",
     "config/editor_layout.ini"

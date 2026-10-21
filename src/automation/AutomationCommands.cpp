@@ -17,6 +17,7 @@
 #include "reflect/Reflection.h"
 #include "render/RenderSettingsTable.h"
 #include "scripting/LuaGameModule.h"
+#include "scripting/LuaInput.h"
 #include "scripting/LuaRuntime.h"
 #include "scripting/LuaWorld.h"
 
@@ -910,24 +911,57 @@ void RegisterTools(Dispatcher& d)
 		return r;
 	});
 
-	// Injects SDL key or mouse events; they travel the normal event path (MainWindow -> Core -> Input layer)
-	// from the next frame on.
+	// Injects one key, mouse-button or gamepad input. Keys and mouse buttons are also pushed as SDL events (the normal
+	// event path, for the legacy InputManager). Every kind is recorded in the injected input state (LuaInput.h), which
+	// the action maps read, so `input.inject` drives the same actions a real device does, from the next frame on.
 	d.Register("input.inject", [](Invocation& inv) {
 		RequireCore(inv);
 		const bool hasKey = Has(inv.params, "key");
 		const bool hasMouse = Has(inv.params, "mouse");
-		if (Has(inv.params, "action")) Invalid("action injection is not supported; inject 'key' or 'mouse' events");
-		if (hasKey == hasMouse) Invalid("give exactly one of 'key' or 'mouse'");
+		const bool hasPad = Has(inv.params, "pad");
+		if (Has(inv.params, "action")) Invalid("action injection is not supported; inject 'key', 'mouse' or 'pad' input");
+		if (static_cast<int>(hasKey) + static_cast<int>(hasMouse) + static_cast<int>(hasPad) != 1) {
+			Invalid("give exactly one of 'key', 'mouse' or 'pad'");
+		}
 		const std::string state = RequireString(inv.params, "state");
 		if (state != "down" && state != "up") Invalid("'state' must be \"down\" or \"up\"");
 		const bool down = state == "down";
+
+		json r = json::object();
+		r["state"] = state;
+		r["applies_at"] = "next frame";
+		if (hasPad) {
+			const int pad = static_cast<int>(OptNumber(inv.params, "pad", 0));
+			if (pad < 0 || pad >= NoxLua::kMaxPads) Invalid("'pad' must be a slot 0.." + std::to_string(NoxLua::kMaxPads - 1));
+			const bool hasButton = Has(inv.params, "button");
+			const bool hasAxis = Has(inv.params, "axis");
+			if (hasButton == hasAxis) Invalid("a pad input needs exactly one of 'button' or 'axis'");
+			if (hasButton) {
+				const std::string name = RequireString(inv.params, "button");
+				const SDL_GameControllerButton button = SDL_GameControllerGetButtonFromString(name.c_str());
+				if (button == SDL_CONTROLLER_BUTTON_INVALID) Invalid("unknown pad button '" + name + "' (SDL controller names, e.g. \"a\", \"dpup\")");
+				NoxLua::SetInjectedPadButton(pad, static_cast<int>(button), down);
+				r["button"] = name;
+			}
+			else {
+				const std::string name = RequireString(inv.params, "axis");
+				const SDL_GameControllerAxis axis = SDL_GameControllerGetAxisFromString(name.c_str());
+				if (axis == SDL_CONTROLLER_AXIS_INVALID) Invalid("unknown pad axis '" + name + "' (SDL controller names, e.g. \"leftx\")");
+				const double value = down ? OptNumber(inv.params, "value", 1.0) : 0.0;
+				if (value < -1.0 || value > 1.0) Invalid("'value' must be in -1..1");
+				NoxLua::SetInjectedPadAxis(pad, static_cast<int>(axis), static_cast<float>(value));
+				r["axis"] = name;
+				r["value"] = value;
+			}
+			r["pad"] = pad;
+			return r;
+		}
 
 		SDL_Window* focus = SDL_GetKeyboardFocus();
 		if (!focus) focus = SDL_GetMouseFocus();
 		const Uint32 windowId = focus ? SDL_GetWindowID(focus) : 1;
 
 		SDL_Event event{};
-		json r = json::object();
 		if (hasKey) {
 			const std::string name = RequireString(inv.params, "key");
 			const SDL_Keycode sym = SDL_GetKeyFromName(name.c_str());
@@ -940,6 +974,7 @@ void RegisterTools(Dispatcher& d)
 			event.key.keysym.sym = sym;
 			event.key.keysym.scancode = SDL_GetScancodeFromKey(sym);
 			event.key.keysym.mod = 0;
+			NoxLua::SetInjectedKey(static_cast<int>(event.key.keysym.scancode), down);
 			r["key"] = name;
 		}
 		else {
@@ -948,7 +983,9 @@ void RegisterTools(Dispatcher& d)
 			if (button == "left") which = SDL_BUTTON_LEFT;
 			else if (button == "right") which = SDL_BUTTON_RIGHT;
 			else if (button == "middle") which = SDL_BUTTON_MIDDLE;
-			else Invalid("'mouse' must be \"left\", \"right\" or \"middle\"");
+			else if (button == "x1") which = SDL_BUTTON_X1;
+			else if (button == "x2") which = SDL_BUTTON_X2;
+			else Invalid("'mouse' must be \"left\", \"right\", \"middle\", \"x1\" or \"x2\"");
 			int mx = 0, my = 0;
 			SDL_GetMouseState(&mx, &my);
 			event.type = down ? SDL_MOUSEBUTTONDOWN : SDL_MOUSEBUTTONUP;
@@ -960,11 +997,10 @@ void RegisterTools(Dispatcher& d)
 			event.button.clicks = 1;
 			event.button.x = static_cast<Sint32>(OptNumber(inv.params, "x", mx));
 			event.button.y = static_cast<Sint32>(OptNumber(inv.params, "y", my));
+			NoxLua::SetInjectedMouse(which, down);
 			r["mouse"] = button;
 		}
 		if (SDL_PushEvent(&event) < 0) EngineError("SDL_PushEvent failed");
-		r["state"] = state;
-		r["applies_at"] = "next frame";
 		return r;
 	});
 

@@ -231,6 +231,37 @@ A drag or a typed value is one undo step. **Reset to defaults** restores the `co
 the window changes runtime values only: nothing is undoable or saved, and Stop restores the authored values. Scripts
 use the same runtime values through `nox.physics` ([lua_api.md](lua_api.md#settings-noxphysics)).
 
+## Input Actions
+
+Window > **Input Actions** edits the action maps the input system reads. It has two tabs.
+
+- **Project** edits the active project's `input.json` (the file its `project.json` names, `input` defaults to
+  `input.json`). Scripts read these actions with `ctx:action_down`, `ctx:action_pressed` and `ctx:axis`
+  ([lua_api.md](lua_api.md#input)).
+- **Editor** edits `config/editor_input.json`, the engine-owned map of the editor fly camera: `editor_move_forward`
+  (W/S, left stick Y), `editor_move_strafe` (D/A, left stick X), `editor_move_vertical` (E/Q), and the right stick
+  look. Saving this tab reloads the fly camera at once. The file ships with the editor.
+
+Each tab lists the actions (axes are marked). The right side shows the selected action:
+
+- **Add**: the name field and "+ Button" or "+ Axis" create an action. Names are identifiers.
+- **Rename**: type a new name and press Enter. **Remove action** deletes it.
+- **Bindings**: keys, pad buttons and mouse buttons for a button; negative and positive keys, and one pad axis, for an
+  axis. Type a name and press Add (or Enter), or press **Listen**, then press the input you want. The next key, mouse
+  button, pad button or pad axis is bound (a press that does not fit the action is refused with a message). **Cancel**
+  ends a listen. Use the x beside an entry to remove it.
+- **Deadzone** and **Invert pad axis** apply to axes. The deadzone commits when the slider is released.
+
+Every edit is one undo step on the editor's stack (Ctrl+Z, Ctrl+Y). **Save** writes the file in a stable layout: one
+action per line, arrays inline, actions in file order. Saving twice without edits writes the same bytes.
+
+The issue list at the bottom shows errors (unknown key or pad names, duplicate action names, bad deadzones) and
+warnings. A warning means two actions use the same input; both fire. A file that does not parse is shown read-only:
+Save refuses to overwrite it, so fix it in a text editor and press Revert.
+
+The **Live test** section shows what the game sees (player 0) while the window is open: a button shows `pressed`, an axis
+a bar with its value. It samples the same way the game does, so a binding can be checked without Play.
+
 ## Undo and redo
 
 - Ctrl+Z undoes and Ctrl+Y redoes. the **Edit** menu has the same two items.

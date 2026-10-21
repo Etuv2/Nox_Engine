@@ -6,7 +6,7 @@
 
 Launches the engine on scenes/automation_e2e.json in editor mode, then checks engine.info, scene.tree, node.get,
 node.set (verified with node.get), node.create/delete, render.screenshot, render.pass_timings, log.tail,
-lua.exec, engine.pause/step/resume, scene.load, protocol errors, and engine.quit. Exit status 0 when every check
+lua.exec, input.inject into the action map, engine.pause/step/resume, scene.load, protocol errors, and engine.quit. Exit status 0 when every check
 passes. Screenshots and the engine log go under captures/automation/.
 """
 import json
@@ -225,6 +225,28 @@ def run_checks(proc):
             check("lua.exec error carries the message and a traceback",
                   exc.code == -32000 and "e2e-traceback" in exc.message and "stack traceback" in traceback,
                   f"code={exc.code} message={exc.message!r} traceback_lines={len(traceback.splitlines())}")
+
+        # Injected input drives the action map: sample-arena binds "hud_toggle" to H and "fire" to pad X.
+        nox.call("input.inject", {"key": "H", "state": "down"})
+        time.sleep(0.3)
+        key_held = nox.call("lua.exec", {"code": "return input.down('hud_toggle')"})
+        nox.call("input.inject", {"key": "H", "state": "up"})
+        time.sleep(0.3)
+        key_released = nox.call("lua.exec", {"code": "return input.down('hud_toggle')"})
+        check("input.inject key drives its action (held, then released)",
+              key_held is True and key_released is False, f"held={key_held} released={key_released}")
+        nox.call("input.inject", {"pad": 0, "button": "x", "state": "down"})
+        time.sleep(0.3)
+        pad_held = nox.call("lua.exec", {"code": "return input.down('fire')"})
+        nox.call("input.inject", {"pad": 0, "button": "x", "state": "up"})
+        time.sleep(0.3)
+        check("input.inject pad button drives its action", pad_held is True, f"held={pad_held}")
+        nox.call("input.inject", {"pad": 0, "axis": "leftx", "value": 0.8, "state": "down"})
+        time.sleep(0.3)
+        steer = nox.call("lua.exec", {"code": "return input.axis('steer')"})
+        nox.call("input.inject", {"pad": 0, "axis": "leftx", "state": "up"})
+        check("input.inject pad axis drives an axis action", isinstance(steer, (int, float)) and steer > 0.5,
+              f"steer={steer}")
 
         # Frame control: exactly N simulation frames per step
         nox.call("engine.pause")

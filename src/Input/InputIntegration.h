@@ -2,6 +2,7 @@
 
 #include "InputSystem.h"
 #include "InputActions.h"
+#include "../scripting/LuaInput.h"
 #include <memory>
 
 // Forward declarations to avoid circular includes
@@ -55,20 +56,26 @@ public:
     
     // Get access to the underlying input manager
     Input::InputManager* GetInputManager() { return m_inputManager.get(); }
+
+    // Editor fly camera and gamepad look read the engine-owned action map (config/editor_input.json).
+    // Reload after the file changes (Window > Input Actions > Editor saves it).
+    void ReloadEditorActions();
+    const NoxLua::InputMap& EditorActions() const { return m_editorActions; }
     
 private:
     // Setup all input contexts and their callbacks
     void SetupInputContexts();
     void SetupGlobalContext();
-    void SetupCameraContext();
     void SetupEditorContext();
     void SetupLightingContext();
     void SetupAnimationContext();
     void SetupGamepadContext();
     
     // Action callbacks
-    void OnCameraMovement(const std::string& direction, float value);
     void OnCameraLook(float deltaX, float deltaY);
+    // True while the editor fly camera is active (right mouse held in the viewport, mouse locked).
+    bool IsFlying() const;
+    void ApplyEditorFly(float deltaTime);
     void OnApplicationAction(const std::string& action);
     void OnGizmoAction(const std::string& action);
     void OnLightingAction(const std::string& action);
@@ -81,6 +88,7 @@ private:
     
     // Member variables
     std::unique_ptr<Input::InputManager> m_inputManager;
+    NoxLua::InputMap m_editorActions;   // config/editor_input.json
     Core* m_core;
     
     // Component references

@@ -862,13 +862,33 @@ A binding is a plain string (a key name) or a table with exactly one of these fi
 | `input.listen_result()` | the captured binding (the table shape of `binding`, plus `pad` = gamepad slot and `sign` = +1 or -1 for axes) once something was pressed, otherwise `nil`. Taking the result ends the capture |
 | `input.listen_cancel()` | ends a capture without a result |
 | `input.pads()` | the four gamepad slots: `{ slot, connected, name }` |
-| `input.device_events()` | the gamepad connections and disconnections since the last call: `{ connected, player, name }` |
+| `input.device_events()` | the gamepad connections and disconnections since the last call: `{ connected, player, name }` (the same changes `nox.on("input.device")` receives) |
+| `input.down(action [, player])` | the latched state of a button action, as `ctx:action_down` reads it (`false` when no project is loaded). Meant for tools and tests; gameplay code uses `ctx` |
+| `input.axis(action [, player])` | the latched value of an axis action, as `ctx:axis` reads it (`0` when no project is loaded) |
 | `input.save_bindings()` | `true` when the overrides were written to the user directory, otherwise `false` |
 | `input.rumble(low, high, ms [, pad])` | `true` when the gamepad in slot `pad` (default 0) accepted the rumble. `low` and `high` are motor strengths in 0..1 (clamped), `ms` is 0..5000 (default 200). `false` without a gamepad in that slot |
 
 Listening is polled: start it, then read `input.listen_result()` once per frame (the sample-arena Controls page does
-this from its menu system). Device events are polled the same way with `input.device_events()`; they are not pushed
-to a handler.
+this from its menu system).
+
+#### Input: device events
+
+Gamepad connections and disconnections are pushed to handlers as the `input.device` event, in the same frame the
+engine sees them. The payload is `{ connected = true|false, player = 0..3, name = "..." }`, where `player` is the gamepad
+slot (and so the player the pad feeds). Handlers receive the changes made while the project plays.
+
+```lua
+nox.on("input.device", function(ctx, e)
+  if e.connected then
+    ctx:log("pad " .. e.player .. " connected: " .. e.name)
+  else
+    ctx:log("pad " .. e.player .. " disconnected")
+  end
+end)
+```
+
+Changes made while stopped are not delivered to handlers; they are kept for `input.device_events()` (the last 32
+changes), which still works for code that polls.
 
 Without a loaded project these functions fail softly (`nil, error` or `false`). Rebinding changes what
 `ctx:action_down` and `ctx:axis` report from the next frame on.
