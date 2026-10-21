@@ -3,6 +3,7 @@
 #include "ConsoleLog.h"
 #include "../Core.h"
 #include "../Input/InputIntegration.h"
+#include "../SceneFrameClock.h"
 #include "../Camera.h"
 #include "../assets/AssetIO.h"
 #include "../assets/AssetIOJson.h"
@@ -2799,6 +2800,9 @@ void EditorWorkspace::RunSmokeScript()
 {
 	static const bool enabled = [] { const char* v = std::getenv("NOX_EDITOR_SMOKE"); return v && v[0] == '1'; }();
 	if (!enabled) return;
+	// The schedule starts at the first live scene frame of the editor's startup scene (SceneFrameClock): frames
+	// that draw the loading screen do not count.
+	if (!nox::SceneFrameClock::live) return;
 	static int frame = 0;
 	static std::shared_ptr<SceneNode> subject;
 	static glm::vec3 original(0.0f);

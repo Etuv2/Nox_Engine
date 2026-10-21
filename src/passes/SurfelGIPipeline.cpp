@@ -1,5 +1,6 @@
 #include "SurfelGIPipeline.h"
 #include "../PresentTarget.h"
+#include "../SceneFrameClock.h"
 
 #include "../ComputeShader.h"
 #include "../Camera.h"
@@ -2071,22 +2072,24 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 	m_historyReadIndex = historyWriteIndex;
 	m_hasTemporalHistory = applyDebugView == 0u;
 
+	// Texture dumps are numbered by live scene frame (SceneFrameClock), never during loading.
 	const std::string dumpDir = EnvString("NOX_SURFEL_GI_DUMP_DIR");
-	if (!dumpDir.empty()) {
+	if (!dumpDir.empty() && nox::SceneFrameClock::live) {
+		const uint32_t sceneFrame = static_cast<uint32_t>(nox::SceneFrameClock::scene);
 		const std::string explicitDumpFrames = EnvString("NOX_SURFEL_GI_DUMP_FRAMES");
 		const uint32_t dumpFrame = std::max(EnvUInt("NOX_SURFEL_GI_DUMP_FRAME", 240u), 1u);
 		const uint32_t dumpFrameCount = std::max(EnvUInt("NOX_SURFEL_GI_DUMP_FRAME_COUNT", 1u), 1u);
 		const uint32_t dumpFrameInterval = std::max(EnvUInt("NOX_SURFEL_GI_DUMP_FRAME_INTERVAL", 1u), 1u);
-		const uint32_t dumpDelta = m_frameIndex >= dumpFrame ? m_frameIndex - dumpFrame : std::numeric_limits<uint32_t>::max();
+		const uint32_t dumpDelta = sceneFrame >= dumpFrame ? sceneFrame - dumpFrame : std::numeric_limits<uint32_t>::max();
 		const bool dumpScheduledFrame = !explicitDumpFrames.empty()
-			? EnvFrameListContains(explicitDumpFrames, m_frameIndex)
-			: (m_frameIndex >= dumpFrame &&
+			? EnvFrameListContains(explicitDumpFrames, sceneFrame)
+			: (sceneFrame >= dumpFrame &&
 				(dumpDelta % dumpFrameInterval) == 0u &&
 				(dumpDelta / dumpFrameInterval) < dumpFrameCount);
-		if (dumpScheduledFrame && m_lastTextureDumpFrame != m_frameIndex) {
+		if (dumpScheduledFrame && m_lastTextureDumpFrame != sceneFrame) {
 			const std::filesystem::path directory(dumpDir);
 			const std::string frameSuffix = (dumpFrameCount > 1u || !explicitDumpFrames.empty())
-				? ("_frame" + std::to_string(m_frameIndex))
+				? ("_frame" + std::to_string(sceneFrame))
 				: std::string{};
 			const bool rawOk = SaveSurfelDebugTexturePNG(
 				m_resources.rawIndirectTexture,
@@ -2098,12 +2101,12 @@ void SurfelGIPipeline::ApplyIndirect(RenderContext& context, FrameBuffer&)
 				m_width,
 				m_height,
 				directory / ("surfel_upscaled_indirect" + frameSuffix + ".png"));
-			std::cout << "[SurfelGITextureDump] frame=" << m_frameIndex
+			std::cout << "[SurfelGITextureDump] frame=" << sceneFrame
 				<< " dir=" << directory.string()
 				<< " raw=" << rawOk
 				<< " final=" << finalOk
 				<< '\n';
-			m_lastTextureDumpFrame = m_frameIndex;
+			m_lastTextureDumpFrame = sceneFrame;
 		}
 	}
 

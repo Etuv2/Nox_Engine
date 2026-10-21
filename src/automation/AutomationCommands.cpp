@@ -4,6 +4,7 @@
 #include "AutomationServer.h"
 
 #include "Core.h"
+#include "SceneFrameClock.h"
 #include "ImGuiInterface.h"
 #include "ModularRenderer.h"
 #include "RenderContext.h"
@@ -464,6 +465,7 @@ json EngineInfo(Invocation& inv)
 	info["load_step"] = core.GetSceneLoadStep();
 	if (!core.GetSceneLoadError().empty()) info["load_error"] = core.GetSceneLoadError();
 	info["frame"] = Control().frameIndex;
+	info["scene_frame"] = nox::SceneFrameClock::scene;  // live scene frames of the current scene (docs/scenes.md)
 	info["fps"] = core.GetFPS();
 	info["tier"] = CurrentQualityTier();
 	info["paused"] = Control().paused;
