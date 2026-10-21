@@ -1,0 +1,14 @@
+{
+  "type": "model",
+  "name": "Coin",
+  "path": "models/cube.glb",
+  "scale": [0.5, 0.5, 0.5],
+  "components": {
+    "MeshRenderer": {
+      "culling": "inherit",
+      "exclude_from_reflection_capture": false,
+      "model": "models/cube.glb",
+      "render_whole_model": false
+    }
+  }
+}
