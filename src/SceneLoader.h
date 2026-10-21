@@ -140,6 +140,8 @@ private:
 	std::string m_currentSceneDirectory;
 	size_t m_loadedModelCount = 0;
 	size_t m_missingCriticalAssetCount = 0;
+	// Component names ProcessNode could not add before the node had its ECS entity; applied after CreateECSEntity.
+	std::vector<std::string> m_pendingComponentNames;
 	// Child nodes emitted by a procedural generator while processing the current node; consumed
 	// by ProcessNodeRecursive and attached as generated (non-serialized) children.
 	nlohmann::json m_pendingGeneratedChildren;

@@ -301,6 +301,49 @@ references, so they must be unique among scene nodes (the first match is used).
 Unknown nodes, unknown schemas, unknown fields and wrong types are reported as diagnostics; the
 rest of the data still loads. Stop restores the authored values.
 
+## Animator (skeletal animation)
+
+The `Animator` component plays the clips of a skinned model and runs its state machine (docs/animation.md). Reach it
+with `ctx:component(h, "Animator")`. Its fields and methods:
+
+| Name | Kind | Meaning |
+|---|---|---|
+| `clip` | string | selected clip name; with a graph it follows the primary clip of the current state |
+| `speed` | float | playback rate multiplier, 0 to 10 |
+| `loop` | bool | loop flag of the selected clip; shared by every node that uses the model |
+| `graph` | string | the state machine as JSON text (params, states, transitions); empty for plain clip playback |
+| `state` | string, read-only | name of the current state of the graph, or empty |
+| `playing`, `time`, `clip_count` | read-only | playback flag, clip time, clips in the model |
+| `play(name)`, `play_index(i)` | methods | start a clip as a single-clip state (a cut); with a graph this replaces the current state |
+| `stop()`, `pause()`, `resume()` | methods | playback control; `stop` clears the pose |
+| `set_morph_weight(i, w)` | method | morph target weight |
+| `set_float(name, v)`, `set_bool(name, b)` | methods | write a graph parameter of that type |
+| `set_trigger(name)` | method | set a graph trigger; the transition that uses it consumes it |
+| `current_state()` | method | name of the current state |
+
+A method that fails raises a Lua error (`Animator:set_float failed`). Setting a graph parameter on a node without a
+graph, or with a name that is not declared with that type, fails.
+
+```lua
+local anim = ctx:component(ctx:find("Shark_00"), "Animator")
+if anim.graph ~= "" then
+  anim:set_float("speed", 0.7)
+  anim:set_bool("circling", true)
+end
+```
+
+Marker events arrive as `anim.event` (once per loop, when the playhead crosses the marker's time):
+
+| Event | Payload |
+|---|---|
+| `anim.event` | `{ entity = handle, name = marker name, clip = clip name, phase = marker time in [0, 1) }` |
+
+```lua
+nox.on("anim.event", function(ctx, e)
+  if e.name == "splash" then ctx:log("splash on", ctx:name(e.entity), "in", e.clip) end
+end)
+```
+
 ## Events
 
 `nox.on(name, handler)` registers a handler; `ctx:emit(name, payload)` queues an event. The payload is
