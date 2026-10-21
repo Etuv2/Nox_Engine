@@ -1738,13 +1738,25 @@ void SceneLoader::StoreAuthoredState(const std::shared_ptr<SceneNode>& node, con
 }
 
 std::shared_ptr<SceneNode> SceneLoader::ProcessNodeRecursive(const json& nodeJson, EntityID parentEntityID) {
+	m_pendingComponentNames.clear();
 	auto node = ProcessNode(nodeJson);
+	std::vector<std::string> deferredComponents = std::move(m_pendingComponentNames);
+	m_pendingComponentNames.clear();
 	json generatedChildren = std::move(m_pendingGeneratedChildren);
 	m_pendingGeneratedChildren = json();
 	if (!node) return nullptr;
 
 	// Create ECS entity for this node
 	CreateECSEntity(node, parentEntityID);
+
+	// Components that needed the entity (Animator) are applied now, with the same warnings as the first pass.
+	if (!deferredComponents.empty()) {
+		std::vector<std::string> warnings;
+		nox::reflect::DeserializeComponentsNamed(*node, nodeJson["components"], deferredComponents, &warnings);
+		for (const std::string& warning : warnings) {
+			std::cerr << "[SceneLoader] Warning: node '" << node->GetName() << "': " << warning << std::endl;
+		}
+	}
 	// Authored keys and the loaded state, after the entity exists (save compares against them).
 	StoreAuthoredState(node, nodeJson);
 
@@ -2188,7 +2200,7 @@ std::shared_ptr<SceneNode> SceneLoader::ProcessNode(const json& nodeJson) {
 	// Registry components win over the legacy keys above (see SerializeNode).
 	if (nodeJson.contains("components")) {
 		std::vector<std::string> warnings;
-		nox::reflect::DeserializeComponents(*node, nodeJson["components"], &warnings);
+		nox::reflect::DeserializeComponents(*node, nodeJson["components"], &warnings, &m_pendingComponentNames);
 		for (const std::string& warning : warnings) {
 			std::cerr << "[SceneLoader] Warning: node '" << nodeDebugName << "': " << warning << std::endl;
 		}

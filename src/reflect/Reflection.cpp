@@ -323,7 +323,38 @@ nlohmann::json SerializeComponents(const SceneNode& node, bool skipBuiltin) {
 	return out;
 }
 
-void DeserializeComponents(SceneNode& node, const nlohmann::json& components, std::vector<std::string>* warnings) {
+namespace {
+
+// Adds the component when the node lacks it, then applies the authored properties. False when it could not be added.
+bool DeserializeOneComponent(SceneNode& node, const std::string& name, const ComponentDesc& desc,
+	const nlohmann::json& value, std::vector<std::string>* warnings, bool reportAddFailure) {
+	if (!desc.has(node)) {
+		if (!desc.add || !desc.add(node)) {
+			if (reportAddFailure && warnings) warnings->push_back("cannot add component '" + name + "'");
+			return false;
+		}
+	}
+	if (!value.is_object()) return true;
+	for (auto p = value.begin(); p != value.end(); ++p) {
+		const PropertyDesc* prop = desc.FindProperty(p.key());
+		if (!prop) {
+			if (warnings) warnings->push_back(name + ": unknown property '" + p.key() + "'");
+			continue;
+		}
+		if (prop->flags & PropReadOnly) continue;
+		PropValue propValue;
+		std::string error;
+		if (!ValueFromJson(*prop, p.value(), propValue) || !SetProperty(node, name, p.key(), propValue, &error)) {
+			if (warnings) warnings->push_back(name + "." + p.key() + ": " + (error.empty() ? "bad value" : error));
+		}
+	}
+	return true;
+}
+
+} // namespace
+
+void DeserializeComponents(SceneNode& node, const nlohmann::json& components, std::vector<std::string>* warnings,
+	std::vector<std::string>* deferred) {
 	if (!components.is_object()) {
 		if (warnings) warnings->push_back("'components' must be an object");
 		return;
@@ -334,26 +365,20 @@ void DeserializeComponents(SceneNode& node, const nlohmann::json& components, st
 			if (warnings) warnings->push_back("unknown component '" + it.key() + "'");
 			continue;
 		}
-		if (!desc->has(node)) {
-			if (!desc->add || !desc->add(node)) {
-				if (warnings) warnings->push_back("cannot add component '" + it.key() + "'");
-				continue;
-			}
+		// With `deferred` the failure is not reported here: the caller retries the name once the node has its entity.
+		if (!DeserializeOneComponent(node, it.key(), *desc, it.value(), warnings, deferred == nullptr) && deferred) {
+			deferred->push_back(it.key());
 		}
-		if (!it.value().is_object()) continue;
-		for (auto p = it.value().begin(); p != it.value().end(); ++p) {
-			const PropertyDesc* prop = desc->FindProperty(p.key());
-			if (!prop) {
-				if (warnings) warnings->push_back(it.key() + ": unknown property '" + p.key() + "'");
-				continue;
-			}
-			if (prop->flags & PropReadOnly) continue;
-			PropValue value;
-			std::string error;
-			if (!ValueFromJson(*prop, p.value(), value) || !SetProperty(node, it.key(), p.key(), value, &error)) {
-				if (warnings) warnings->push_back(it.key() + "." + p.key() + ": " + (error.empty() ? "bad value" : error));
-			}
-		}
+	}
+}
+
+void DeserializeComponentsNamed(SceneNode& node, const nlohmann::json& components, const std::vector<std::string>& names,
+	std::vector<std::string>* warnings) {
+	if (!components.is_object()) return;
+	for (const std::string& name : names) {
+		const ComponentDesc* desc = Registry::Get().Find(name);
+		if (!desc || !components.contains(name)) continue;
+		DeserializeOneComponent(node, name, *desc, components.at(name), warnings, true);
 	}
 }
 

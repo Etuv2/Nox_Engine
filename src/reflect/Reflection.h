@@ -149,6 +149,12 @@ bool InvokeMethod(SceneNode& node, const std::string& component, const std::stri
 nlohmann::json SerializeComponents(const SceneNode& node, bool skipBuiltin = true);
 // Applies a "components" object: adds missing components, then sets properties. Unknown components
 // or properties are reported through warnings and otherwise ignored (forward compatibility).
-void DeserializeComponents(SceneNode& node, const nlohmann::json& components, std::vector<std::string>* warnings = nullptr);
+// A component that cannot be added yet (Animator needs the node's ECS entity) is reported as a warning, unless
+// `deferred` is given: then its name goes to `deferred` and DeserializeComponentsNamed applies it later.
+void DeserializeComponents(SceneNode& node, const nlohmann::json& components, std::vector<std::string>* warnings = nullptr,
+	std::vector<std::string>* deferred = nullptr);
+// Applies the named components of a "components" object (the ones DeserializeComponents deferred).
+void DeserializeComponentsNamed(SceneNode& node, const nlohmann::json& components, const std::vector<std::string>& names,
+	std::vector<std::string>* warnings = nullptr);
 
 } // namespace nox::reflect
