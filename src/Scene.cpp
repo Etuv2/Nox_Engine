@@ -1180,6 +1180,7 @@ bool Scene::LoadFromGLTF(const std::string& path, const std::shared_ptr<Prepared
 	hasTangents = false;
 	skin.joints.clear();
 	skin.inverseBindMatrices.clear();
+	skin.bounds = SkinBounds::JointBounds();
 	m_model_name = path.substr(path.find_last_of("/\\") + 1);
 
 	const auto nodeBuildStart = Clock::now();
@@ -1198,6 +1199,7 @@ bool Scene::LoadFromGLTF(const std::string& path, const std::shared_ptr<Prepared
 
 		// Load skin data
 		skin.joints = gltfSkin.joints;
+		skin.bounds.Reset(skin.joints.size());
 
 		// Load inverse bind matrices
 		if (gltfSkin.inverseBindMatrices >= 0) {
@@ -1757,62 +1759,34 @@ bool Scene::LoadFromGLTF(const std::string& path, const std::shared_ptr<Prepared
 
 			if (hasJoints0 || hasJoints1) {
 				for (size_t i = 0; i < vertexCount; ++i) {
-					std::array<Influence, 8> influences{};
-					int influenceCount = 0;
-
-					auto appendInfluenceSet = [&](const glm::u32vec4& jointSet, const glm::vec4& weightSet, bool enabled) {
-						if (!enabled) {
-							return;
-						}
-						for (int c = 0; c < 4; ++c) {
-							if (influenceCount >= static_cast<int>(influences.size())) {
-								break;
-							}
-							Influence inf;
-							inf.boneID = static_cast<int>(jointSet[c]);
-							inf.weight = weightSet[c];
-							if (inf.boneID < 0) {
-								inf.boneID = 0;
-							}
-							if (totalJoints > 0 && inf.boneID >= totalJoints) {
-								inf.boneID = totalJoints - 1;
-							}
-							influences[static_cast<size_t>(influenceCount++)] = inf;
-						}
-					};
-
-					appendInfluenceSet(joints0Values[i], weights0Values[i], hasJoints0);
-					appendInfluenceSet(joints1Values[i], weights1Values[i], hasJoints1);
-
-					if (influenceCount > 1) {
-						std::sort(influences.begin(), influences.begin() + influenceCount,
-							[](const Influence& a, const Influence& b) {
-								return a.weight > b.weight;
-							});
+					uint32_t jointIn[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
+					float weightIn[8] = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
+					size_t influenceCount = 0;
+					for (int c = 0; hasJoints0 && c < 4; ++c) {
+						jointIn[influenceCount] = joints0Values[i][c];
+						weightIn[influenceCount++] = weights0Values[i][c];
 					}
-
+					for (int c = 0; hasJoints1 && c < 4; ++c) {
+						jointIn[influenceCount] = joints1Values[i][c];
+						weightIn[influenceCount++] = weights1Values[i][c];
+					}
 					glm::ivec4 finalIDs(0);
 					glm::vec4 finalWeights(0.0f);
-					float totalWeight = 0.0f;
-					for (int c = 0; c < 4 && c < influenceCount; ++c) {
-						finalIDs[c] = influences[static_cast<size_t>(c)].boneID;
-						finalWeights[c] = influences[static_cast<size_t>(c)].weight;
-						totalWeight += influences[static_cast<size_t>(c)].weight;
-					}
-
-					if (totalWeight < 1e-6f) {
-						finalIDs = glm::ivec4(0, 0, 0, 0);
-						finalWeights = glm::vec4(1, 0, 0, 0);
-					}
-					else {
-						finalWeights /= totalWeight;
-						if ((hasWeights0 || hasWeights1) && totalJoints > 0) {
-							primitiveHasMeaningfulSkinning = true;
-						}
+					// Top four of up to eight influences, normalised (SkinBounds.h); unweighted vertices bind to joint 0.
+					const bool hasWeight = SkinBounds::MergeInfluences(jointIn, weightIn, influenceCount,
+						static_cast<uint32_t>(totalJoints), finalIDs, finalWeights);
+					if (hasWeight && (hasWeights0 || hasWeights1) && totalJoints > 0) {
+						primitiveHasMeaningfulSkinning = true;
 					}
 
 					vertices[i].boneIDs = finalIDs;
 					vertices[i].boneWeights = finalWeights;
+					// Per-joint bind-space box for skinned bounds. Only joints with weight count.
+					for (int c = 0; c < 4; ++c) {
+						if (finalWeights[c] > 0.0f) {
+							skin.bounds.Expand(static_cast<size_t>(finalIDs[c]), vertices[i].position);
+						}
+					}
 				}
 			}
 

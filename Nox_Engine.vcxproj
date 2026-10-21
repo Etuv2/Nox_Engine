@@ -553,6 +553,7 @@
     <ClInclude Include="src\SceneGraph.h" />
     <ClInclude Include="src\SceneLoader.h" />
     <ClInclude Include="src\SceneLoadingScreen.h" />
+    <ClInclude Include="src\SkinBounds.h" />
     <ClInclude Include="src\SliceTask.h" />
     <ClInclude Include="src\SceneNode.h" />
     <ClInclude Include="src\SceneRenderExtras.h" />

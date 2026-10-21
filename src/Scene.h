@@ -18,6 +18,7 @@
 #include "tiny_gltf.h"
 #include "MeshComponent.h"
 #include "Vertex.h"
+#include "SkinBounds.h"
 #include "Animation.h"
 #include "Texture.h"
 
@@ -66,6 +67,7 @@ public:
     struct Skin {
         std::vector<int> joints;         // Node indices
         std::vector<glm::mat4> inverseBindMatrices;
+        SkinBounds::JointBounds bounds;  // Bind-space vertex box per joint, over all primitives (see SkinBounds.h)
     };
     Skin skin;
     bool hasSkin = false;          // Runtime skinning required (weighted JOINTS/WEIGHTS present)
