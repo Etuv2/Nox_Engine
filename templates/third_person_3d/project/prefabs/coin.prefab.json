@@ -9,6 +9,13 @@
       "exclude_from_reflection_capture": false,
       "model": "models/sphere.glb",
       "render_whole_model": false
+    },
+    "Trigger": {
+      "shape": "sphere",
+      "radius": 1.0,
+      "layer": 1,
+      "mask": 4294967295,
+      "enabled": true
     }
   }
 }
