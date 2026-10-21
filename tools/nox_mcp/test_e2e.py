@@ -6,7 +6,8 @@
 
 Launches the engine on scenes/automation_e2e.json in editor mode, then checks engine.info, scene.tree, node.get,
 node.set (verified with node.get), node.create/delete, render.screenshot, render.pass_timings, log.tail,
-lua.exec, input.inject into the action map, engine.pause/step/resume, scene.load, protocol errors, and engine.quit. Exit status 0 when every check
+lua.exec, input.inject into the action map, render.reload_shaders (clean, broken and restored shader) and Ctrl+Shift+R
+through input.inject target "editor", engine.pause/step/resume, scene.load, protocol errors, and engine.quit. Exit status 0 when every check
 passes. Screenshots and the engine log go under captures/automation/.
 """
 import json
@@ -65,6 +66,18 @@ def raw_line_roundtrip(payload):
 def scene_ready(info):
     """True when no scene load is running and a scene is loaded."""
     return not info.get("loading") and bool(info.get("scene")) and not info.get("load_error")
+
+
+def image_not_black(path):
+    """(ok, detail): the PNG has visible pixels. Uses PIL when it is installed, else a file-size floor."""
+    if not path.exists():
+        return False, "missing file"
+    try:
+        from PIL import Image, ImageStat
+    except ImportError:
+        return path.stat().st_size > 20000, f"PIL not installed; {path.stat().st_size} bytes"
+    mean = ImageStat.Stat(Image.open(path).convert("RGB")).mean
+    return max(mean) > 2.0, f"mean RGB {[round(v, 1) for v in mean]}"
 
 
 def wait_ready(nox, proc):
@@ -271,6 +284,38 @@ def run_checks(proc):
                 break
             time.sleep(0.25)
         check("scene.load requests a scene swap that completes", loaded)
+
+        # Shader reload (render.reload_shaders): clean tree, a broken shader is kept and the frame still renders, then
+        # the file is restored in a finally block and the next reload is clean again.
+        clean = nox.call("render.reload_shaders")
+        check("render.reload_shaders on the clean tree keeps nothing", clean.get("kept") == 0,
+              f"reloaded={clean.get('reloaded')} kept={clean.get('kept')} errors={clean.get('errors')}")
+
+        shader = ROOT / "shaders" / "fullscreen_vert.glsl"
+        backup = shader.read_bytes()
+        try:
+            shader.write_bytes(backup + b"\nthis line is not glsl;\n")
+            broken = nox.call("render.reload_shaders")
+            check("a broken shader is kept, not swapped in", broken.get("kept", 0) >= 1,
+                  f"kept={broken.get('kept')} first error={(broken.get('errors') or [''])[0]}")
+            shot = nox.call("render.screenshot", {"path": "captures/automation/e2e_shader_broken.png"})
+            ok, detail = image_not_black(ROOT / shot["path"])
+            check("the frame still renders after a broken shader (not black)", ok, detail)
+        finally:
+            shader.write_bytes(backup)
+        restored = nox.call("render.reload_shaders")
+        check("restoring the shader reloads cleanly (kept == 0)", restored.get("kept") == 0,
+              f"reloaded={restored.get('reloaded')} kept={restored.get('kept')}")
+
+        # Ctrl+Shift+R through input.inject target "editor" (ImGui IO): the editor's shortcut runs the reload.
+        for key, state in [("Left Ctrl", "down"), ("Left Shift", "down"), ("R", "down"), ("R", "up"),
+                           ("Left Shift", "up"), ("Left Ctrl", "up")]:
+            nox.call("input.inject", {"key": key, "state": state, "target": "editor"})
+            time.sleep(0.15)
+        time.sleep(0.5)
+        log_lines = nox.call("log.tail", {"lines": 2000})["lines"]
+        check("Ctrl+Shift+R through input.inject target editor runs the shader reload",
+              any("[Shaders] reload:" in line.get("text", "") for line in log_lines))
 
         # Protocol robustness
         bad = raw_line_roundtrip(b"{this is not json")

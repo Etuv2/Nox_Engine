@@ -252,6 +252,9 @@ COMMAND_TOOLS = [
      "Set one render setting ({key, value}) or several ({settings: {key: value}}). quality_tier applies a tier from the scene file.",
      obj({"key": STR, "value": {}, "settings": {"type": "object"}})),
     ("render_pass_timings", "render.pass_timings", "Per-pass CPU and GPU milliseconds of the last rendered frame.", obj()),
+    ("render_reload_shaders", "render.reload_shaders",
+     "Recompile every shader program made from files, and the surfel GI shaders, from disk (the editor's Ctrl+Shift+R). "
+     "A program that fails keeps its previous version. Returns {reloaded, kept, stale, errors[]}.", obj()),
     ("log_tail", "log.tail", "Last engine log lines (stdout and stderr) with level info, warning or error.",
      obj({"lines": {"type": "integer", "minimum": 1, "maximum": 20000, "default": 200}})),
     ("lua_exec", "lua.exec",
@@ -274,6 +277,10 @@ COMMAND_TOOLS = [
           "button": {"type": "string", "description": "SDL controller button name, e.g. a, x, dpup"},
           "axis": {"type": "string", "description": "SDL controller axis name, e.g. leftx, righttrigger"},
           "value": {"type": "number", "minimum": -1, "maximum": 1, "description": "axis value when pressed (default 1)"},
+          "target": {"type": "string", "enum": ["action", "editor"], "default": "action",
+                     "description": "action: the action layer (and SDL events). editor: the key goes into ImGui IO, so "
+                                    "editor shortcuts such as Ctrl+Shift+R see it (keys only; use \"Left Ctrl\" and "
+                                    "\"Left Shift\" for modifiers)"},
           "state": {"type": "string", "enum": ["down", "up"]}, "x": INT, "y": INT}, ["state"])),
     ("editor_select", "editor.select", "Select a node in the editor (editor mode only). Omit id to clear.",
      obj({"id": {"type": ["integer", "null"]}})),

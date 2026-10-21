@@ -14,6 +14,8 @@
 #include "SceneRenderSettings.h"
 #include "Camera.h"
 #include "ImGui/ConsoleLog.h"
+#include "ShaderLoader.h"
+#include <IMGUI/imgui.h>
 #include "assets/AssetIO.h"
 #include "reflect/Reflection.h"
 #include "render/RenderSettingsTable.h"
@@ -28,6 +30,7 @@
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <iostream>
 #include <map>
 #include <optional>
 #include <string>
@@ -663,8 +666,55 @@ void RegisterNodes(Dispatcher& d)
 	});
 }
 
+// ImGui key for an SDL key, for input.inject { target = "editor" }. ImGuiKey_None when the key has no mapping here.
+ImGuiKey ImGuiKeyFromSdl(SDL_Keycode sym)
+{
+	if (sym >= SDLK_a && sym <= SDLK_z) return static_cast<ImGuiKey>(ImGuiKey_A + (sym - SDLK_a));
+	if (sym >= SDLK_0 && sym <= SDLK_9) return static_cast<ImGuiKey>(ImGuiKey_0 + (sym - SDLK_0));
+	if (sym >= SDLK_F1 && sym <= SDLK_F12) return static_cast<ImGuiKey>(ImGuiKey_F1 + (sym - SDLK_F1));
+	switch (sym) {
+	case SDLK_SPACE: return ImGuiKey_Space;
+	case SDLK_RETURN: return ImGuiKey_Enter;
+	case SDLK_ESCAPE: return ImGuiKey_Escape;
+	case SDLK_TAB: return ImGuiKey_Tab;
+	case SDLK_BACKSPACE: return ImGuiKey_Backspace;
+	case SDLK_DELETE: return ImGuiKey_Delete;
+	case SDLK_LEFT: return ImGuiKey_LeftArrow;
+	case SDLK_RIGHT: return ImGuiKey_RightArrow;
+	case SDLK_UP: return ImGuiKey_UpArrow;
+	case SDLK_DOWN: return ImGuiKey_DownArrow;
+	case SDLK_LCTRL: return ImGuiKey_LeftCtrl;
+	case SDLK_RCTRL: return ImGuiKey_RightCtrl;
+	case SDLK_LSHIFT: return ImGuiKey_LeftShift;
+	case SDLK_RSHIFT: return ImGuiKey_RightShift;
+	case SDLK_LALT: return ImGuiKey_LeftAlt;
+	case SDLK_RALT: return ImGuiKey_RightAlt;
+	default: return ImGuiKey_None;
+	}
+}
+
 void RegisterRender(Dispatcher& d)
 {
+	// Recompiles every program made from files (ShaderLoader recipes) and the surfel GI shaders. A program that fails
+	// keeps the previous one, so the frame keeps rendering. Returns {reloaded, kept, stale, errors[]}.
+	d.Register("render.reload_shaders", [](Invocation& inv) {
+		Core& core = RequireCore(inv);
+		const ShaderReloadReport report = ReloadAllShaderPrograms(std::cout);
+		int kept = report.kept;
+		json errors = json::array();
+		for (const std::string& error : report.errors) errors.push_back(error);
+		if (core.GetRenderer() && !core.GetRenderer()->ReloadSurfelGIShaders()) {
+			++kept;
+			errors.push_back("surfel GI: a surfel program failed to compile or link; the previous program is kept");
+		}
+		json r = json::object();
+		r["reloaded"] = report.reloaded;
+		r["kept"] = kept;
+		r["stale"] = report.stale;
+		r["errors"] = errors;
+		return r;
+	});
+
 	d.Register("render.screenshot", [](Invocation& inv) -> json {
 		Core& core = RequireCore(inv);
 		RequireGraph(core);
@@ -928,10 +978,17 @@ void RegisterTools(Dispatcher& d)
 		const std::string state = RequireString(inv.params, "state");
 		if (state != "down" && state != "up") Invalid("'state' must be \"down\" or \"up\"");
 		const bool down = state == "down";
+		// target "action" (default): the action layer and the SDL event path. target "editor": the key goes straight into
+		// ImGui IO (io.AddKeyEvent), so editor shortcuts such as Ctrl+Shift+R see it. Keys only.
+		const std::string target = OptString(inv.params, "target", "action");
+		if (target != "action" && target != "editor") Invalid("'target' must be \"action\" or \"editor\"");
+		const bool editorTarget = target == "editor";
+		if (editorTarget && !hasKey) Invalid("target \"editor\" takes a 'key' (ImGui gets keyboard input only)");
 
 		json r = json::object();
 		r["state"] = state;
 		r["applies_at"] = "next frame";
+		r["target"] = target;
 		if (hasPad) {
 			const int pad = static_cast<int>(OptNumber(inv.params, "pad", 0));
 			if (pad < 0 || pad >= NoxLua::kMaxPads) Invalid("'pad' must be a slot 0.." + std::to_string(NoxLua::kMaxPads - 1));
@@ -968,6 +1025,15 @@ void RegisterTools(Dispatcher& d)
 			const std::string name = RequireString(inv.params, "key");
 			const SDL_Keycode sym = SDL_GetKeyFromName(name.c_str());
 			if (sym == SDLK_UNKNOWN) Invalid("unknown key name '" + name + "' (SDL key names, e.g. \"W\", \"Space\", \"Left\")");
+			if (editorTarget) {
+				if (!ImGui::GetCurrentContext()) Invalid("target \"editor\" needs the editor UI (no ImGui context)");
+				const ImGuiKey imguiKey = ImGuiKeyFromSdl(sym);
+				if (imguiKey == ImGuiKey_None) Invalid("no ImGui key for '" + name + "'");
+				ImGui::GetIO().AddKeyEvent(imguiKey, down);
+				NoxLua::SetInjectedKey(static_cast<int>(SDL_GetScancodeFromKey(sym)), down);
+				r["key"] = name;
+				return r;   // no SDL event: its modifier field would clear the Ctrl/Shift state queued in ImGui
+			}
 			event.type = down ? SDL_KEYDOWN : SDL_KEYUP;
 			event.key.timestamp = SDL_GetTicks();
 			event.key.windowID = windowId;

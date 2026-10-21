@@ -76,12 +76,16 @@ float AudioAttenuationGain(float distance, const AudioSpatialParams& params) {
 }
 
 float AudioPanFromDirection(const glm::vec3& diff, float listenerAngleDeg) {
-    const float angle = std::atan2(diff.y, diff.x) * 180.0f / kPi;
-    float relative = angle - listenerAngleDeg;
-    while (relative < 0.0f) relative += 360.0f;
-    while (relative >= 360.0f) relative -= 360.0f;
-    const float sine = std::sin(relative * kPi / 180.0f);
-    return std::clamp((sine + 1.0f) / 2.0f, 0.0f, 1.0f);
+    // Listener frame in the ground plane: forward = (cos a, sin a) on (x, z), the yaw convention of AudioListener and
+    // the camera (atan2(z, x)). Right = cross(forward, up) = (-sin a, cos a). The balance is the projection of the
+    // horizontal direction to the source on that right vector, so y (height) plays no part.
+    const float a = listenerAngleDeg * kPi / 180.0f;
+    const float rightX = -std::sin(a);
+    const float rightZ = std::cos(a);
+    const float horizontal = std::sqrt(diff.x * diff.x + diff.z * diff.z);
+    if (!(horizontal > 1e-6f) || !std::isfinite(horizontal)) return 0.5f;   // directly above or on the listener
+    const float side = (diff.x * rightX + diff.z * rightZ) / horizontal;   // -1 full left .. +1 full right
+    return std::clamp(0.5f + 0.5f * side, 0.0f, 1.0f);
 }
 
 void AudioSetRayTest(AudioRayTest test) {

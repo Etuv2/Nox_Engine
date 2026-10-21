@@ -405,7 +405,36 @@ project panel and the console.
   its own reload path, which is unchanged.
 - **Models** (glTF) are not hot-reloaded yet. Their `Scene` holds the GPU meshes and every node that uses the model
   refers to it, so an in-place swap needs a full reset of the scene's state first. Reload the scene after editing a
-  model.
+  model. The design for doing it safely is below; it is not built, because it has not been verified live.
+
+#### Model hot reload: design (not built)
+
+Why not in place: `Scene` carries the meshes (GPU buffers and vertex inputs), the imported materials, the node
+hierarchy, animations and skin data, and `Scene::Cleanup` clears only the meshes. Reusing one object means resetting
+every field, and a half-reset object renders garbage. Nodes also hold `shared_ptr<Scene>` (`SceneNode::SetModel`,
+`RenderSystem`, `ComponentTypes`), so a node cannot be retargeted without help.
+
+Plan:
+
+1. **Generation counter.** `ModelManager` keeps, per path, the cache entry `{ shared_ptr<Scene>, generation }`. A file
+   change (polled like the texture reload) decodes a new `Scene` with `PrepareGLTF` on the main thread, then installs it
+   under `generation + 1`. The old `Scene` is not touched.
+2. **Retarget at the frame boundary.** Each node records the generation of the scene it rendered with (set in
+   `SetModel`). At the start of the next frame, nodes whose model path has a newer generation switch to the new scene,
+   and their children, renderable and animation components are rebuilt from the new scene's node list (the same code
+   path `SceneLoader` uses on load). A node that cannot be rebuilt keeps the old scene.
+3. **Free the old asset at the end of the frame.** The old `Scene` goes into a retire list. It is destroyed after the
+   frame's last draw, once no node points at it. The destructor releases the GL buffers (`MeshComponent::Cleanup`), so
+   nothing frees a buffer that a draw still uses.
+4. **Dependent state.** Physics colliders built from the model are rebuilt from the new scene (`SceneLoader` already
+   has the path). Animation players restart at their current clip time, clamped to the new clip's length. Material
+   overrides in the scene file are reapplied, so edits made in the editor survive the reload.
+5. **Failure.** A decode failure keeps the old generation and logs `[HotReload] could not decode <path>`, as textures do.
+   A model whose skin or animation count changed rebuilds its animators from scratch and logs it.
+
+Verification it needs before it is built: copy a `.gltf` into a test project, change its vertex colour while the editor
+runs, and check the log (`[HotReload] reloaded model ...`), a screenshot before and after, and the retire list
+(no GL buffer count growth after 100 reloads, from `render.pass_timings` or the GL debug label count).
 
 ## Smoke test
 
