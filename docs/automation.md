@@ -99,13 +99,15 @@ Engine state. No parameters.
 -> {"jsonrpc":"2.0","id":1,"method":"engine.info"}
 <- {"jsonrpc":"2.0","id":1,"result":{"automation_port":47800,"fps":94.5,"frame":4480,"loading":false,
     "mode":"editor","paused":false,"playing":false,"protocol":"2.0","scene":"scenes/automation_e2e.json",
+    "gpu_objects":{"buffers":47,"programs":71,"textures":151,"vertex_inputs":17},
     "scene_name":"automation e2e","tier":"","version":"1.0.0"}}
 ```
 
 `mode` is `editor` or `game`. `loading` is true while a scene swap is pending. `frame` counts simulation frames
 run. `scene_frame` counts the live frames of the current scene (frames shown without a loading screen, numbered from
 1 after each commit; see `docs/scenes.md` "Loading"). `tier` is the quality tier of the scene (empty when the scene
-names none).
+names none). `gpu_objects` counts the live GPU objects the device holds (buffers, textures, vertex inputs, programs);
+a leak check compares them before and after work.
 
 ### engine.quit
 
@@ -276,6 +278,22 @@ handle; a program that fails to compile or link keeps its previous version, so t
 (an unreadable or missing source, or a compile or link failure), plus one when a surfel GI program failed. `stale` counts
 recipes whose program was destroyed since it was created. `errors` has one line per kept program; the compiler and linker
 messages are in the console log (`log.tail`). A surfel GI pipeline that is off reports nothing to reload.
+
+### assets.reload
+
+Decodes loaded models again from disk and retargets every node that uses them, the same work the editor does by itself
+when a model file changes (see [editor.md](editor.md#model-hot-reload)). With `path`, that model is reloaded whether or
+not its files changed. Without it, every loaded model whose files changed (size or modification time, the .gltf's
+buffers and images included) is reloaded. The reload runs on the calling thread, at the point the command is handled.
+
+```
+-> {"jsonrpc":"2.0","id":22,"method":"assets.reload","params":{"path":"models/car/car.gltf"}}
+<- {"jsonrpc":"2.0","id":22,"result":{"reloaded":[{"path":"models/car/car.gltf","nodes":4}],"failed":[]}}
+```
+
+`failed` has one entry per model that did not reload, with the reason (a decode failure keeps the previous model; a changed
+node count keeps it too, and the scene must be reloaded to use the new model). A path that is not loaded is a failed entry.
+Needs a loaded scene.
 
 ### log.tail
 

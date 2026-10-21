@@ -12,6 +12,7 @@ passes. Screenshots and the engine log go under captures/automation/.
 """
 import json
 import os
+import shutil
 import socket
 
 import subprocess
@@ -316,6 +317,75 @@ def run_checks(proc):
         log_lines = nox.call("log.tail", {"lines": 2000})["lines"]
         check("Ctrl+Shift+R through input.inject target editor runs the shader reload",
               any("[Shaders] reload:" in line.get("text", "") for line in log_lines))
+
+        # Model hot reload (assets.reload and the editor's file watch). A copy of cube.glb under a scratch folder in the
+        # project feeds a new node; the file is replaced by sphere.glb; the file watch (or assets.reload) reloads it,
+        # the frame still renders, a broken file is kept, and 100 reloads leave the GPU object counts unchanged.
+        # The folder and the node are removed in a finally block.
+        hot_rel = "captures/automation/hot_reload_e2e"
+        hot_dir = ROOT / hot_rel
+        hot_file = hot_dir / "hot.glb"
+        hot_logical = hot_rel + "/hot.glb"
+        hot_node_id = None
+        try:
+            hot_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(ROOT / "models" / "cube.glb", hot_file)
+            created_hot = nox.call("node.create", {"node": {"name": "E2E_HotModel", "type": "model",
+                                                             "position": [0, 0, -4], "path": hot_logical}})
+            hot_node_id = created_hot["id"]
+            hot_props = nox.call("node.get", {"id": hot_node_id}).get("properties", {})
+            hot_model = hot_props.get("MeshRenderer", {}).get("model")
+            check("a node created with a model path shows that model", hot_model == hot_logical, f"model={hot_model}")
+            base_objects = nox.call("engine.info").get("gpu_objects", {})
+
+            shutil.copyfile(ROOT / "models" / "sphere.glb", hot_file)
+            watched = False
+            deadline = time.time() + 8.0
+            while time.time() < deadline:
+                lines = nox.call("log.tail", {"lines": 2000})["lines"]
+                if any(f"[HotReload] reloaded model {hot_logical}" in line.get("text", "") for line in lines):
+                    watched = True
+                    break
+                time.sleep(0.25)
+            check("the editor's file watch reloads a model whose file was replaced", watched)
+            if not watched:
+                forced = nox.call("assets.reload", {"path": hot_logical})
+                check("assets.reload reloads the replaced model", len(forced.get("reloaded", [])) == 1,
+                      f"reloaded={forced.get('reloaded')} failed={forced.get('failed')}")
+            shot = nox.call("render.screenshot", {"path": "captures/automation/e2e_model_reload.png"})
+            ok, detail = image_not_black(ROOT / shot["path"])
+            check("the frame still renders after a model reload (not black)", ok, detail)
+
+            # A broken file keeps the previous model and reports it; the same path reloads once the file is valid again.
+            hot_file.write_bytes(b"this is not a glb file")
+            broken = nox.call("assets.reload", {"path": hot_logical})
+            check("a broken model file is kept, not swapped in",
+                  len(broken.get("failed", [])) == 1 and not broken.get("reloaded"),
+                  f"failed={broken.get('failed')}")
+            shutil.copyfile(ROOT / "models" / "cube.glb", hot_file)
+            restored_hot = nox.call("assets.reload", {"path": hot_logical})
+            check("the same path reloads once the file is valid again", len(restored_hot.get("reloaded", [])) == 1,
+                  f"reloaded={restored_hot.get('reloaded')} failed={restored_hot.get('failed')}")
+
+            # Leak check: 100 reloads of the same model, then a settle period for the retired models to be freed.
+            loops_reloaded = 0
+            for _ in range(100):
+                loops_reloaded += len(nox.call("assets.reload", {"path": hot_logical}).get("reloaded", []))
+            check("100 forced reloads all succeed", loops_reloaded == 100, f"reloaded={loops_reloaded}")
+            time.sleep(1.5)
+            after_objects = nox.call("engine.info").get("gpu_objects", {})
+            shot_after = nox.call("render.screenshot", {"path": "captures/automation/e2e_model_reload_after_100.png"})
+            ok_after, detail_after = image_not_black(ROOT / shot_after["path"])
+            check("the frame still renders after 100 model reloads (not black)", ok_after, detail_after)
+            check("100 model reloads leave the GPU object counts unchanged",
+                  after_objects == base_objects, f"before={base_objects} after={after_objects}")
+        finally:
+            if hot_node_id is not None:
+                try:
+                    nox.call("node.delete", {"id": hot_node_id})
+                except NoxError:
+                    pass
+            shutil.rmtree(hot_dir, ignore_errors=True)
 
         # Protocol robustness
         bad = raw_line_roundtrip(b"{this is not json")

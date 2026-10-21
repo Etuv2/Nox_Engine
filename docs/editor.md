@@ -403,38 +403,46 @@ project panel and the console.
 - Known limits: uniform block and shader storage bindings made with `glUniformBlockBinding` are not restored by a reload
   (the engine's shaders use explicit `layout(binding=...)`, so they are not affected today). The surfel GI pipeline has
   its own reload path, which is unchanged.
-- **Models** (glTF) are not hot-reloaded yet. Their `Scene` holds the GPU meshes and every node that uses the model
-  refers to it, so an in-place swap needs a full reset of the scene's state first. Reload the scene after editing a
-  model. The design for doing it safely is below; it is not built, because it has not been verified live.
+- **Models** (glTF and GLB) are reloaded when their files change; see [Model hot reload](#model-hot-reload).
 
-#### Model hot reload: design (not built)
+#### Model hot reload
 
-Why not in place: `Scene` carries the meshes (GPU buffers and vertex inputs), the imported materials, the node
-hierarchy, animations and skin data, and `Scene::Cleanup` clears only the meshes. Reusing one object means resetting
-every field, and a half-reset object renders garbage. Nodes also hold `shared_ptr<Scene>` (`SceneNode::SetModel`,
-`RenderSystem`, `ComponentTypes`), so a node cannot be retargeted without help.
+When a model file used by the open scene changes on disk, the editor reloads it at the next frame boundary, without a
+command. The files of a model are the `.glb` itself, or the `.gltf` and the external buffers and images it names
+(resolved next to it; `data:` URIs are skipped). `.obj` files are not hot-reloaded.
 
-Plan:
+- **Detection.** Every loaded model is checked twice a second (the same poll as textures) against the size and
+  modification time of its files. A change is decoded only once the files have been unchanged for 0.3 s, so a file that is
+  still being written is not read half done. A missing model file is never decoded.
+- **Decode.** A new `Scene` is decoded from the files. The old one stays in use until the new one is ready. A failed decode
+  (a parse error, a file missing mid-write) keeps the previous model and logs
+  `[HotReload] could not decode <path>; keeping the previous model until its files change again`. The next change to the
+  files tries again.
+- **Retarget.** Every node that uses the model is pointed at the new copy in place. The mesh list and bounds, the skeleton,
+  the renderable (the renderer picks it up on its next frame), and the mesh collider are rebuilt. Node transforms,
+  components, children and selection stay as they are. The material overrides written in the scene file are applied to the
+  new copy again. Material edits made in the editor that are not in the scene file are not kept: the reload is from the file.
+  An animation keeps its clip and time when the clip's joints still exist in the new file, and otherwise resets. An
+  animator with a state-machine graph restarts at the graph's default state.
+- **Free.** The replaced model is kept until the next frame has started, then released. A model that nothing else holds
+  releases its vertex inputs at that point, and its buffers and textures go with the last reference. A render item cache
+  can still hold the old model for one frame, so a model that is still shared is kept for up to three frames before it
+  is given up (logged as `[HotReload] a replaced model is still in use`).
+- **Node count changes.** A node's children are built from the glTF node list when the scene loads. When the new file has
+  a different number of glTF nodes, the reload is refused and logged, and the previous model stays. Reload the scene to use
+  the new layout. The same applies to an animation added to a model that had none.
+- Each successful reload is logged as `[HotReload] reloaded model <path> (<n> nodes retargeted)`. A child node named after
+  its glTF node takes the new name when the file renames that node; a name the user changed is kept.
 
-1. **Generation counter.** `ModelManager` keeps, per path, the cache entry `{ shared_ptr<Scene>, generation }`. A file
-   change (polled like the texture reload) decodes a new `Scene` with `PrepareGLTF` on the main thread, then installs it
-   under `generation + 1`. The old `Scene` is not touched.
-2. **Retarget at the frame boundary.** Each node records the generation of the scene it rendered with (set in
-   `SetModel`). At the start of the next frame, nodes whose model path has a newer generation switch to the new scene,
-   and their children, renderable and animation components are rebuilt from the new scene's node list (the same code
-   path `SceneLoader` uses on load). A node that cannot be rebuilt keeps the old scene.
-3. **Free the old asset at the end of the frame.** The old `Scene` goes into a retire list. It is destroyed after the
-   frame's last draw, once no node points at it. The destructor releases the GL buffers (`MeshComponent::Cleanup`), so
-   nothing frees a buffer that a draw still uses.
-4. **Dependent state.** Physics colliders built from the model are rebuilt from the new scene (`SceneLoader` already
-   has the path). Animation players restart at their current clip time, clamped to the new clip's length. Material
-   overrides in the scene file are reapplied, so edits made in the editor survive the reload.
-5. **Failure.** A decode failure keeps the old generation and logs `[HotReload] could not decode <path>`, as textures do.
-   A model whose skin or animation count changed rebuilds its animators from scratch and logs it.
+`assets.reload` (see [automation.md](automation.md#assetsreload)) reloads one model, or every changed model, on demand,
+and returns what happened. The leak check reads `gpu_objects` from `engine.info` (live buffers, textures, vertex inputs and
+programs): 100 reloads of one model leave those counts where they were, and `tools/nox_mcp/test_e2e.py` checks it.
 
-Verification it needs before it is built: copy a `.gltf` into a test project, change its vertex colour while the editor
-runs, and check the log (`[HotReload] reloaded model ...`), a screenshot before and after, and the retire list
-(no GL buffer count growth after 100 reloads, from `render.pass_timings` or the GL debug label count).
+Measured (`tools/nox_mcp/test_e2e.py`, cube.glb swapped for sphere.glb and back, then 100 `assets.reload` calls of one
+model): `gpu_objects` before the 100 reloads was buffers 49, textures 152, vertex inputs 19, programs 76, and after them
+the same. Before the leak fix the vertex inputs grew by one per reload (19 to 120): replaced models were never cleaned up.
+
+Known limits: a reload decodes the whole file on the editor's thread, so a large model stalls the frame it reloads on.
 
 ## Smoke test
 
