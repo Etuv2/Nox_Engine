@@ -1,0 +1,10 @@
+{
+  "format": 1,
+  "name": "animation-demo",
+  "runtime": "lua",
+  "api_version": 1,
+  "entry": "scripts/main.lua",
+  "script_roots": ["scripts"],
+  "data_roots": [],
+  "assets": []
+}

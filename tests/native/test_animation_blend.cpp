@@ -12,6 +12,7 @@
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/quaternion.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <memory>
 #include <string>
@@ -149,6 +150,31 @@ NOX_TEST(AnimationBlend, InterruptedCrossfadeStartsFromCurrentPose)
 	// And it reaches "c" when the new fade is over.
 	anim.Update(0.2f, *scene);
 	NOX_CHECK(NearMat(anim.LocalMatrix(0), TRS(glm::vec3(-2.0f, 0.0f, 0.0f), kIdentity), 1e-4f));
+}
+
+NOX_TEST(AnimationBlend, CrossfadeStartsWithoutAPop)
+{
+	// Linear fade of 0.2 s from translation 0 to translation 2: each 0.01 s step may move the bone by at most
+	// 0.01 / 0.2 * 2 = 0.1, so the first frame of the transition is continuous with the pose before it.
+	auto scene = MakeRig({ MakeClip("a", 1.0f, { 0, 0, 0 }, { 0, 0, 0 }),
+		MakeClip("b", 1.0f, { 2, 0, 0 }, { 2, 0, 0 }) });
+
+	AnimatorRuntime anim;
+	anim.Bind(*scene);
+	anim.PlayClip(*scene, 0, true, 0.0f);
+	anim.Update(0.0f, *scene);
+	glm::vec3 previous = glm::vec3(anim.LocalMatrix(0)[3]);
+
+	anim.PlayClip(*scene, 1, true, 0.2f);
+	float largestStep = 0.0f;
+	for (int step = 0; step < 25; ++step) {
+		anim.Update(0.01f, *scene);
+		const glm::vec3 now = glm::vec3(anim.LocalMatrix(0)[3]);
+		largestStep = std::max(largestStep, glm::length(now - previous));
+		previous = now;
+	}
+	NOX_CHECK(largestStep <= 0.1f + 1e-4f);
+	NOX_CHECK(std::fabs(previous.x - 2.0f) < 1e-4f);   // the fade completed at 0.2 s
 }
 
 // ---- Blend spaces -------------------------------------------------------------------------------------

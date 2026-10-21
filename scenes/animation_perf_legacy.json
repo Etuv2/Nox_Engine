@@ -1,0 +1,617 @@
+{
+  "camera": {
+    "far": 600.0,
+    "fov": 50.0,
+    "mouse_sensitivity": 0.1,
+    "movement_speed": 10.0,
+    "near": 0.1,
+    "pitch": -14.0,
+    "position": [
+      0.0,
+      9.0,
+      27.0
+    ],
+    "yaw": -90.0
+  },
+  "exposure": 1,
+  "gamma": 2.2,
+  "project": "projects/animation-demo/project.json",
+  "scene_name": "animation perf legacy",
+  "nodes": [
+    {
+      "components": {
+        "Light": {
+          "cast_shadows": false,
+          "color": [
+            1.0,
+            0.95,
+            0.9
+          ],
+          "enabled": true,
+          "intensity": 6.0,
+          "range": 30.0,
+          "source_radius": 0.0
+        }
+      },
+      "light": {
+        "castsShadows": false,
+        "color": [
+          1.0,
+          0.95,
+          0.9
+        ],
+        "enabled": true,
+        "intensity": 6.0,
+        "range": 30.0,
+        "type": "point"
+      },
+      "name": "Key",
+      "position": [
+        0.0,
+        10.0,
+        8.0
+      ],
+      "type": "light"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/realistic_shark.glb",
+          "render_whole_model": true
+        }
+      },
+      "name": "Shark_00",
+      "path": "models\\realistic_shark.glb",
+      "position": [
+        -8.0,
+        0.0,
+        -6.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.1,
+        0.1,
+        0.1
+      ],
+      "type": "model"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/realistic_shark.glb",
+          "render_whole_model": true
+        }
+      },
+      "name": "Shark_01",
+      "path": "models\\realistic_shark.glb",
+      "position": [
+        -4.0,
+        0.0,
+        -6.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.1,
+        0.1,
+        0.1
+      ],
+      "type": "model"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/realistic_shark.glb",
+          "render_whole_model": true
+        }
+      },
+      "name": "Shark_02",
+      "path": "models\\realistic_shark.glb",
+      "position": [
+        0.0,
+        0.0,
+        -6.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.1,
+        0.1,
+        0.1
+      ],
+      "type": "model"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/realistic_shark.glb",
+          "render_whole_model": true
+        }
+      },
+      "name": "Shark_03",
+      "path": "models\\realistic_shark.glb",
+      "position": [
+        4.0,
+        0.0,
+        -6.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.1,
+        0.1,
+        0.1
+      ],
+      "type": "model"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/realistic_shark.glb",
+          "render_whole_model": true
+        }
+      },
+      "name": "Shark_04",
+      "path": "models\\realistic_shark.glb",
+      "position": [
+        8.0,
+        0.0,
+        -6.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.1,
+        0.1,
+        0.1
+      ],
+      "type": "model"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/realistic_shark.glb",
+          "render_whole_model": true
+        }
+      },
+      "name": "Shark_05",
+      "path": "models\\realistic_shark.glb",
+      "position": [
+        -8.0,
+        0.0,
+        -2.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.1,
+        0.1,
+        0.1
+      ],
+      "type": "model"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/realistic_shark.glb",
+          "render_whole_model": true
+        }
+      },
+      "name": "Shark_06",
+      "path": "models\\realistic_shark.glb",
+      "position": [
+        -4.0,
+        0.0,
+        -2.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.1,
+        0.1,
+        0.1
+      ],
+      "type": "model"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/realistic_shark.glb",
+          "render_whole_model": true
+        }
+      },
+      "name": "Shark_07",
+      "path": "models\\realistic_shark.glb",
+      "position": [
+        0.0,
+        0.0,
+        -2.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.1,
+        0.1,
+        0.1
+      ],
+      "type": "model"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/realistic_shark.glb",
+          "render_whole_model": true
+        }
+      },
+      "name": "Shark_08",
+      "path": "models\\realistic_shark.glb",
+      "position": [
+        4.0,
+        0.0,
+        -2.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.1,
+        0.1,
+        0.1
+      ],
+      "type": "model"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/realistic_shark.glb",
+          "render_whole_model": true
+        }
+      },
+      "name": "Shark_09",
+      "path": "models\\realistic_shark.glb",
+      "position": [
+        8.0,
+        0.0,
+        -2.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.1,
+        0.1,
+        0.1
+      ],
+      "type": "model"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/realistic_shark.glb",
+          "render_whole_model": true
+        }
+      },
+      "name": "Shark_10",
+      "path": "models\\realistic_shark.glb",
+      "position": [
+        -8.0,
+        0.0,
+        2.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.1,
+        0.1,
+        0.1
+      ],
+      "type": "model"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/realistic_shark.glb",
+          "render_whole_model": true
+        }
+      },
+      "name": "Shark_11",
+      "path": "models\\realistic_shark.glb",
+      "position": [
+        -4.0,
+        0.0,
+        2.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.1,
+        0.1,
+        0.1
+      ],
+      "type": "model"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/realistic_shark.glb",
+          "render_whole_model": true
+        }
+      },
+      "name": "Shark_12",
+      "path": "models\\realistic_shark.glb",
+      "position": [
+        0.0,
+        0.0,
+        2.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.1,
+        0.1,
+        0.1
+      ],
+      "type": "model"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/realistic_shark.glb",
+          "render_whole_model": true
+        }
+      },
+      "name": "Shark_13",
+      "path": "models\\realistic_shark.glb",
+      "position": [
+        4.0,
+        0.0,
+        2.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.1,
+        0.1,
+        0.1
+      ],
+      "type": "model"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/realistic_shark.glb",
+          "render_whole_model": true
+        }
+      },
+      "name": "Shark_14",
+      "path": "models\\realistic_shark.glb",
+      "position": [
+        8.0,
+        0.0,
+        2.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.1,
+        0.1,
+        0.1
+      ],
+      "type": "model"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/realistic_shark.glb",
+          "render_whole_model": true
+        }
+      },
+      "name": "Shark_15",
+      "path": "models\\realistic_shark.glb",
+      "position": [
+        -8.0,
+        0.0,
+        6.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.1,
+        0.1,
+        0.1
+      ],
+      "type": "model"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/realistic_shark.glb",
+          "render_whole_model": true
+        }
+      },
+      "name": "Shark_16",
+      "path": "models\\realistic_shark.glb",
+      "position": [
+        -4.0,
+        0.0,
+        6.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.1,
+        0.1,
+        0.1
+      ],
+      "type": "model"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/realistic_shark.glb",
+          "render_whole_model": true
+        }
+      },
+      "name": "Shark_17",
+      "path": "models\\realistic_shark.glb",
+      "position": [
+        0.0,
+        0.0,
+        6.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.1,
+        0.1,
+        0.1
+      ],
+      "type": "model"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/realistic_shark.glb",
+          "render_whole_model": true
+        }
+      },
+      "name": "Shark_18",
+      "path": "models\\realistic_shark.glb",
+      "position": [
+        4.0,
+        0.0,
+        6.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.1,
+        0.1,
+        0.1
+      ],
+      "type": "model"
+    },
+    {
+      "components": {
+        "MeshRenderer": {
+          "culling": "inherit",
+          "exclude_from_reflection_capture": false,
+          "model": "models/realistic_shark.glb",
+          "render_whole_model": true
+        }
+      },
+      "name": "Shark_19",
+      "path": "models\\realistic_shark.glb",
+      "position": [
+        8.0,
+        0.0,
+        6.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.1,
+        0.1,
+        0.1
+      ],
+      "type": "model"
+    }
+  ]
+}
