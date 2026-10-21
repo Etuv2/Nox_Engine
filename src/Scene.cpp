@@ -1104,26 +1104,23 @@ static GltfTextureAlphaInfo AnalyzeTextureAlpha(const tinygltf::Model& model, in
 	return info;
 }
 
-bool Scene::LoadFromGLTF(const std::string& path) {
-	using Clock = std::chrono::high_resolution_clock;
-	const auto loadStart = Clock::now();
+struct PreparedGltf {
+	tinygltf::Model model;
 	float parseMs = 0.0f;
-	float nodeBuildMs = 0.0f;
-	float primitiveBuildMs = 0.0f;
-	float materialSetupMs = 0.0f;
-	float animationLoadMs = 0.0f;
-	size_t totalVertexCount = 0;
-	size_t totalIndexCount = 0;
+};
 
+std::shared_ptr<PreparedGltf> Scene::PrepareGLTF(const std::string& path) {
+	using Clock = std::chrono::high_resolution_clock;
 	tinygltf::TinyGLTF loader;
 	loader.SetImageLoader(&LoadGltfImageOrSkip, nullptr);
-	tinygltf::Model model;
+	auto prepared = std::make_shared<PreparedGltf>();
+	tinygltf::Model& model = prepared->model;
 	std::string err, warn;
 	bool ret = false;
 	// Logical model path: external buffers/images resolve relative to it through AssetIO.
 	if (!loader.SetFsCallbacks(AssetIO::MakeGltfFsCallbacks(), &err)) {
 		std::cerr << "[GLTF Error] " << err << std::endl;
-		return false;
+		return nullptr;
 	}
 	const auto parseStart = Clock::now();
 
@@ -1144,10 +1141,28 @@ bool Scene::LoadFromGLTF(const std::string& path) {
 	}
 	if (!ret) {
 		std::cerr << "[GLTF Error] Failed to load: " << path << std::endl;
+		return nullptr;
+	}
+	prepared->parseMs = std::chrono::duration<float, std::milli>(Clock::now() - parseStart).count();
+	return prepared;
+}
+
+bool Scene::LoadFromGLTF(const std::string& path, const std::shared_ptr<PreparedGltf>& prepared) {
+	using Clock = std::chrono::high_resolution_clock;
+	const auto loadStart = Clock::now();
+	// The CPU parse runs here unless a prefetched copy was supplied (ModelManager prefetch on a worker thread).
+	const std::shared_ptr<PreparedGltf> source = prepared ? prepared : PrepareGLTF(path);
+	if (!source) {
 		return false;
 	}
-	const auto parseEnd = Clock::now();
-	parseMs = std::chrono::duration<float, std::milli>(parseEnd - parseStart).count();
+	tinygltf::Model& model = source->model;
+	const float parseMs = source->parseMs;
+	float nodeBuildMs = 0.0f;
+	float primitiveBuildMs = 0.0f;
+	float materialSetupMs = 0.0f;
+	float animationLoadMs = 0.0f;
+	size_t totalVertexCount = 0;
+	size_t totalIndexCount = 0;
 
 	// Clear any existing data in this Scene
 	meshes.clear();
